@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% set page_title = "Upload Successful" %}
+  {% include "_partials/head_assets.html" %}
+  <meta name="description" content="File uploaded successfully." />
+</head>
+
+<body class="auth-bg">
+  <main role="main" class="auth-wrap">
+    <section class="auth-card" aria-live="polite">
+      <div class="auth-head">
+        <img class="logo big" src="/static/icons/newicon.png?v={{ static_version }}" alt="DET logo">
+        <div>
+          <h1>Upload Successful</h1>
+          <div class="small-muted">Meter image uploaded and processed.</div>
+        </div>
+      </div>
+
+      <div class="filters" style="margin-top:12px;">
+        <a href="/" class="btn primary">Go to Dashboard</a>
+        <button class="btn btn-install js-install-app" type="button" hidden style="display:none;">Install App</button>
+        <a href="/logout" class="btn btn-signout">Sign Out</a>
+      </div>
+      {% include "_partials/install_hint.html" %}
+    </section>
+  </main>
+</body>
+</html>

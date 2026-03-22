@@ -1,0 +1,14 @@
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="theme-color" content="#0f7da7"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <title>{{ page_title }}</title>
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icons/newicon.png?v={{ static_version }}">
+  <link rel="icon" type="image/png" sizes="1024x1024" href="/static/icons/newicon.png?v={{ static_version }}">
+  <script>window.__ASSET_VERSION="{{ static_version }}";</script>
+  <meta name="csrf-token" content="{{ request.session.get('csrf_token', '') }}">
+  <script>window.__CSRF_TOKEN="{{ request.session.get('csrf_token', '') }}";</script>
+  <link rel="stylesheet" href="/static/app.css?v={{ static_version }}">
+  <script src="/static/app.js?v={{ static_version }}" defer></script>

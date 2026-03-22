@@ -1,0 +1,12 @@
+#python virtual envt
+.venv/
+venv/
+env/
+
+#python cache
+__pycache__/
+*.pyc
+
+# local env secrets
+.env
+.env.*

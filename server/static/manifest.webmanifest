@@ -1,0 +1,29 @@
+{
+  "name": "DET Monitoring Application",
+  "short_name": "DET Monitor",
+  "description": "Monitoring, tasks, alerts, and messaging for DET operations.",
+  "start_url": "/login",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0e5f84",
+  "theme_color": "#0f7da7",
+  "icons": [
+    {
+      "src": "/static/icons/newicon.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/icons/newicon.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/icons/newicon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

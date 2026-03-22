@@ -1,0 +1,24 @@
+<nav class="app-bottom-nav" aria-label="Bottom Navigation">
+  <a class="app-nav-item {% if active_page == 'tasks' %}active{% endif %}" href="/tasks">
+    <span class="app-nav-icon">🗂</span><span>Tasks</span>
+  </a>
+  {% if user.role == "admin" %}
+  <a class="app-nav-item {% if active_page == 'dashboard' %}active{% endif %}" href="/admin">
+    <span class="app-nav-icon">📊</span><span>Dashboard</span>
+  </a>
+  {% elif user.role == "coadmin" %}
+  <a class="app-nav-item {% if active_page == 'dashboard' %}active{% endif %}" href="/coadmin/{{ user.team }}">
+    <span class="app-nav-icon">📊</span><span>Dashboard</span>
+  </a>
+  {% else %}
+  <a class="app-nav-item {% if active_page == 'dashboard' %}active{% endif %}" href="/">
+    <span class="app-nav-icon">📊</span><span>Dashboard</span>
+  </a>
+  {% endif %}
+  <button class="app-nav-item" type="button" onclick="window.__openChatPopup && window.__openChatPopup()">
+    <span class="app-nav-icon">✉</span><span>Messages</span>
+  </button>
+  <a class="app-nav-item {% if active_page == 'settings' %}active{% endif %}" href="/settings">
+    <span class="app-nav-icon">⚙</span><span>Settings</span>
+  </a>
+</nav>

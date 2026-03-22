@@ -1,0 +1,23 @@
+# Python
+.venv/
+.venv*/
+venv/
+__pycache__/
+*.pyc
+
+# Env files
+.env
+.env.*
+
+# Node
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+
+# Runtime / temp
+.runtime/

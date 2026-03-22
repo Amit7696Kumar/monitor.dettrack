@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% set page_title = "Login — DET MONITORING APPLICATION" %}
+  {% include "_partials/head_assets.html" %}
+</head>
+
+<body class="authv2-bg">
+  <div class="authv2-shell">
+    <section class="authv2-card">
+      <div class="authv2-card-hero">
+        <div class="authv2-hero-row">
+          <img class="logo big" src="/static/icons/newicon.png?v={{ static_version }}" alt="DET logo">
+          <h1>Hello!</h1>
+        </div>
+        <p>Securely log in with your email and password.</p>
+      </div>
+      {% if error %}
+        <div class="toast error">{{ error }}</div>
+      {% endif %}
+      {% if info %}
+        <div class="toast ok">{{ info }}</div>
+      {% endif %}
+
+      <div class="authv2-pane active" data-auth-pane="signin">
+        <div class="authv2-pane-head">
+          <h2>Sign in</h2>
+        </div>
+        <form method="post" action="/login" class="stack">
+          <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+          <label class="field authv2-field">
+            <span>Email/Username</span>
+            <div class="authv2-input-wrap">
+              <span class="authv2-input-icon">✉</span>
+              <input class="input authv2-input" name="username" autocomplete="username" placeholder="Enter your email/username" required>
+            </div>
+          </label>
+
+          <label class="field authv2-field">
+            <span>Password</span>
+            <div class="authv2-input-wrap">
+              <span class="authv2-input-icon">🔒</span>
+              <input class="input authv2-input" type="password" name="password" autocomplete="current-password" placeholder="Enter your password" required>
+            </div>
+          </label>
+
+          <div class="authv2-row">
+            <label><input type="checkbox" name="remember_me" value="1"> Remember me</label>
+            <a href="#" class="js-forgot-link">Forgot password?</a>
+          </div>
+
+          <button class="btn primary authv2-btn" type="submit">Sign In</button>
+          {% if google_enabled %}
+            <a class="btn authv2-btn authv2-google" href="/auth/google/start">
+              <span class="authv2-google-icon" aria-hidden="true"></span>
+              <span>Continue with Google</span>
+            </a>
+          {% else %}
+            <button class="btn authv2-btn authv2-google" type="button" disabled>Google Login Not Configured</button>
+          {% endif %}
+          <button class="btn btn-install js-install-app authv2-btn" type="button" hidden style="display:none;">Install App</button>
+          {% include "_partials/install_hint.html" %}
+        </form>
+        <div class="authv2-footer">
+          <span>Don't have an account?</span>
+          <button type="button" class="authv2-link-btn js-open-signup">Sign up</button>
+        </div>
+      </div>
+
+      <div class="authv2-pane" data-auth-pane="signup">
+        <div class="authv2-pane-head">
+          <h2>Create Account</h2>
+          <p>Register your account today using a valid email and password.</p>
+        </div>
+        <form method="post" action="/register" class="stack">
+          <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+          <label class="field authv2-field">
+            <span>Email</span>
+            <div class="authv2-input-wrap">
+              <span class="authv2-input-icon">✉</span>
+              <input class="input authv2-input" name="email" type="email" placeholder="Enter your email" required>
+            </div>
+          </label>
+          <label class="field authv2-field">
+            <span>Password</span>
+            <div class="authv2-input-wrap">
+              <span class="authv2-input-icon">🔒</span>
+              <input class="input authv2-input" name="password" type="password" placeholder="Create a password" required>
+            </div>
+          </label>
+          <label class="field authv2-field">
+            <span>Confirm Password</span>
+            <div class="authv2-input-wrap">
+              <span class="authv2-input-icon">🔒</span>
+              <input class="input authv2-input" name="confirm_password" type="password" placeholder="Confirm password" required>
+            </div>
+          </label>
+          <label class="field authv2-field">
+            <span>Referral ID (optional)</span>
+            <input class="input" name="referral_id" placeholder="Referral code">
+          </label>
+          <div class="authv2-row">
+            <label><input type="checkbox" name="remember_me" value="1"> Remember me</label>
+          </div>
+          <button class="btn primary authv2-btn" type="submit">Sign Up</button>
+          <button class="btn authv2-btn authv2-secondary js-back-signin" type="button">Back to Sign In</button>
+        </form>
+        <div class="authv2-footer">
+          <span>Already have an account?</span>
+          <button type="button" class="authv2-link-btn js-back-signin">Sign in</button>
+        </div>
+      </div>
+
+      <div class="authv2-pane" data-auth-pane="forgot">
+        <div class="authv2-pane-head">
+          <h2>Reset Password</h2>
+          <p>Enter your username or email to continue to the password reset step.</p>
+        </div>
+        <form method="post" action="/forgot-password" class="stack">
+          <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+          <label class="field authv2-field">
+            <span>Username or Email</span>
+            <input class="input" name="identifier" placeholder="Enter username or email" required>
+          </label>
+          <button class="btn primary authv2-btn" type="submit">Continue</button>
+          <div class="authv2-row">
+            <span class="small-muted">Remembered your password?</span>
+            <a href="#" class="js-back-signin">Back to sign in</a>
+          </div>
+        </form>
+      </div>
+
+      <div class="login-foot">
+        DET Monitoring secure access portal.
+      </div>
+    </section>
+  </div>
+
+  <script>
+    (function() {
+      const panes = Array.from(document.querySelectorAll("[data-auth-pane]"));
+      const openSignupBtns = Array.from(document.querySelectorAll(".js-open-signup"));
+      const forgotLink = document.querySelector(".js-forgot-link");
+      const backSigninLinks = Array.from(document.querySelectorAll(".js-back-signin"));
+
+      function openPane(key) {
+        panes.forEach((p) => p.classList.toggle("active", p.dataset.authPane === key));
+      }
+      openSignupBtns.forEach((openSignupBtn) => {
+        openSignupBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          openPane("signup");
+        });
+      });
+      if (forgotLink) {
+        forgotLink.addEventListener("click", (e) => {
+          e.preventDefault();
+          openPane("forgot");
+        });
+      }
+
+      backSigninLinks.forEach((backSigninLink) => {
+        backSigninLink.addEventListener("click", (e) => {
+          e.preventDefault();
+          openPane("signin");
+        });
+      });
+
+    })();
+  </script>
+</body>
+</html>

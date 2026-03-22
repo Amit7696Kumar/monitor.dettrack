@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% set page_title = "Admin — DET MONITORING APPLICATION" %}
+  {% include "_partials/head_assets.html" %}
+  <style>
+    .dashboard-status-tabs {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: none;
+      margin-bottom: 12px;
+    }
+    .dashboard-status-tabs::-webkit-scrollbar { display: none; }
+    .dashboard-status-tab {
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      background: rgba(255,255,255,0.72);
+      color: #475569;
+      border-radius: 18px 18px 12px 12px;
+      padding: 12px 14px;
+      min-width: 138px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      transition: background 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+    }
+    .dashboard-status-tab:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+      color: #0f172a;
+    }
+    .dashboard-status-tab.is-active {
+      background: linear-gradient(135deg, #123b70, #1f5a9c);
+      color: #fff;
+      border-color: transparent;
+      box-shadow: 0 16px 30px rgba(18, 59, 112, 0.26);
+    }
+    .dashboard-status-tab.is-active .dashboard-status-tab-count {
+      background: rgba(255,255,255,0.18);
+      color: #fff;
+    }
+    .dashboard-status-tab-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .dashboard-status-tab-count {
+      min-width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.08);
+      color: #0f172a;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.84rem;
+      font-weight: 700;
+      padding: 0 10px;
+    }
+    .dashboard-table-animated {
+      transition: opacity 180ms ease, transform 180ms ease;
+      transform-origin: top center;
+    }
+    .dashboard-table-animated.is-switching {
+      opacity: 0.45;
+      transform: translateY(4px);
+    }
+  </style>
+</head>
+<body class="app-shell admin-dashboard-page">
+<div class="nav">
+  <div class="nav-inner">
+    {% set brand_subtitle = "Admin Dashboard" %}
+    {% include "_partials/nav_brand.html" %}
+    <div class="badges">
+      <div class="badge">Role: <strong>{{ user.role|upper }}</strong></div>
+      <div class="badge">Unread Alerts: <strong id="unreadBadge">{{ unread_count }}</strong></div>
+      <a class="btn small" href="/alerts" aria-label="Open Alerts">🔔 Alerts</a>
+      <a class="btn" href="/tasks">Tasks</a>
+      <a class="btn" href="/teams">Teams</a>
+      <a class="btn" href="/settings">Settings</a>
+      <button class="btn" type="button" id="openChatPopupBtn" onclick="window.__openChatPopup && window.__openChatPopup()">Open Messages</button>
+      <button class="btn btn-install js-install-app" type="button" hidden style="display:none;">Install App</button>
+      <a class="btn btn-signout" href="/logout">Sign Out</a>
+    </div>
+  </div>
+</div>
+{% include "_partials/mobile_header.html" %}
+
+<div class="container">
+  <div id="chatMeta" data-user-id="{{ user.id }}" data-role="{{ user.role }}" data-team="{{ user.team or '' }}"></div>
+
+  <section class="admin-mobile-hero" aria-label="Admin mobile dashboard header">
+    <div class="admin-mobile-topbar">
+      <div class="admin-mobile-brand-block">
+        <img class="admin-mobile-logo" src="/static/icons/newicon.png?v={{ static_version }}" alt="DET logo">
+        <div class="admin-mobile-brand-pill">
+          <div class="admin-mobile-brand-title">DET MONITORING</div>
+          <div class="admin-mobile-brand-subtitle">Admin Dashboard</div>
+        </div>
+      </div>
+      <div class="admin-mobile-actions">
+        <a class="admin-mobile-icon admin-mobile-alerts" href="/alerts" aria-label="Notifications">
+          <span class="admin-mobile-icon-glyph">🔔</span>
+          {% if unread_count and unread_count > 0 %}
+          <span class="admin-mobile-icon-badge">{{ unread_count }}</span>
+          {% endif %}
+        </a>
+        <a class="admin-mobile-icon admin-mobile-teams" href="/teams" aria-label="Teams">
+          <span class="admin-mobile-icon-glyph">👥</span>
+        </a>
+        <a class="admin-mobile-icon admin-mobile-profile" href="/settings" aria-label="Profile">
+          <span class="admin-mobile-icon-glyph">👤</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="admin-mobile-title-block">
+      <h1 class="admin-mobile-title">Admin Command Center</h1>
+      <p class="admin-mobile-subtitle">Monitor team health, review anomalies, and inspect reading evidence in one place.</p>
+    </div>
+  </section>
+
+  <div class="page-head dashboard-page-head">
+    <div>
+      <h1 class="page-title">Admin Dashboard</h1>
+      <p class="page-lead">Review alerts, readings, and task evidence.</p>
+    </div>
+  </div>
+  {% include "_partials/install_hint.html" %}
+
+  <div class="kpi dashboard-kpi">
+    <div class="card">
+      <div class="label">Total Task</div>
+      <div class="value">{{ (readings|length if readings else 0) + (task_instances|length if task_instances else 0) }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Total Alerts</div>
+      <div class="value">{{ alerts|length if alerts else 0 }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Unread Alerts</div>
+      <div class="value">{{ unread_count }}</div>
+    </div>
+  </div>
+
+  <div class="panel dashboard-panel">
+    <div class="panel-body">
+      <div class="filters dashboard-filters" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <input id="searchReadings" class="input" placeholder="Search by task, user, value..." />
+        <select id="meterFilter">
+          <option value="all">All Task Titles</option>
+          <option value="earthing">Earthing Reading</option>
+          <option value="temp">Temperature Reading</option>
+          <option value="voltage">Voltage Reading</option>
+          <option value="odometer">Odometer Reading</option>
+          <option value="fire_point">Fire Point Check</option>
+        </select>
+        <input type="hidden" id="statusFilter" value="">
+      </div>
+      <div class="dashboard-status-tabs" id="adminStatusTabs" role="tablist" aria-label="Dashboard status tabs">
+        <button class="dashboard-status-tab" type="button" data-status-tab="submitted" role="tab" aria-selected="false">
+          <span class="dashboard-status-tab-title">Submitted</span>
+          <span class="dashboard-status-tab-count" data-status-count="submitted">0</span>
+        </button>
+        <button class="dashboard-status-tab" type="button" data-status-tab="pending" role="tab" aria-selected="false">
+          <span class="dashboard-status-tab-title">Pending</span>
+          <span class="dashboard-status-tab-count" data-status-count="pending">0</span>
+        </button>
+        <button class="dashboard-status-tab" type="button" data-status-tab="overdue" role="tab" aria-selected="false">
+          <span class="dashboard-status-tab-title">Overdue</span>
+          <span class="dashboard-status-tab-count" data-status-count="overdue">0</span>
+        </button>
+      </div>
+
+      <div class="admin-mobile-readings-head">
+        <h2 class="admin-mobile-section-title">All Readings</h2>
+        <p class="admin-mobile-section-subtitle">Click a value or “Open” to review details</p>
+      </div>
+
+      {% set use_combined_rows = dashboard_rows is defined and dashboard_rows and dashboard_rows|length > 0 %}
+      {% if use_combined_rows or (readings and readings|length > 0) or (task_instances and task_instances|length > 0) %}
+      <div class="admin-mobile-card-list dashboard-table-animated" id="adminMobileReadings">
+        {% if use_combined_rows %}
+        {% for row in dashboard_rows %}
+        {% if row._row_kind == 'reading' %}
+        <article
+          class="admin-mobile-reading-card"
+          data-meter="{{ row.meter_type }}"
+          data-user="{{ row.username }}"
+          data-team="{{ row.team or '' }}"
+          data-label="{{ row.label }}"
+          data-created="{{ row.created_at }}"
+          data-value="{{ row.value or '' }}"
+          data-status="{{ (row.status or 'overdue')|lower }}"
+          data-ocrjson="{{ (row.ocr_json or '')|e }}"
+          data-image-taken="{{ row.image_taken_at or '' }}"
+          data-image-taken2="{{ row.image_taken_at_2 or '' }}"
+        >
+          <div class="admin-mobile-card-main">
+            <div class="admin-mobile-user">{{ row.username }}</div>
+            <div class="admin-mobile-value">{% if row.value %}{{ row.value }}{% else %}-{% endif %}</div>
+            <div class="admin-mobile-badge-wrap">
+              {% set status_text = (row.status or "OVERDUE")|upper %}
+              <span class="admin-mobile-status-badge {% if (row.status or 'overdue')|lower == 'overdue' %}is-overdue{% else %}is-default{% endif %}">
+                <span class="admin-mobile-status-dot"></span>{{ status_text }}
+              </span>
+            </div>
+          </div>
+          <div class="admin-mobile-card-action">
+            {% if row.filename %}
+            <button class="btn admin-mobile-open-btn js-open-image" type="button" data-src="/uploads/{{ row.filename }}" {% if row.filename_2 %}data-src2="/uploads/{{ row.filename_2 }}"{% endif %}>Open →</button>
+            {% else %}
+            <button class="btn admin-mobile-open-btn" type="button" disabled>Open →</button>
+            {% endif %}
+          </div>
+        </article>
+        {% else %}
+        <article
+          class="admin-mobile-reading-card"
+          data-meter="task"
+          data-user="{{ row.assigned_username or row.assigned_user_id }}"
+          data-team="{{ row.assigned_team_id or '' }}"
+          data-label="{{ row.title }}"
+          data-created="{{ row.submitted_at or row.deadline_at }}"
+          data-value="{{ '' if (row.response_value|string|lower) == 'overdue' else (row.response_value or '') }}"
+          data-status="{{ (row.status or 'overdue')|lower }}"
+          data-ai-result="{{ (row.ai_result_reference or '')|e }}"
+          data-image-taken="{{ row.response_image_taken_at or '' }}"
+          data-image-taken2="{{ row.response_image_taken_at_2 or '' }}"
+        >
+          <div class="admin-mobile-card-main">
+            <div class="admin-mobile-user">{{ row.assigned_username or row.assigned_user_id }}</div>
+            <div class="admin-mobile-value">
+              {% if row.response_value is not none and (row.response_value|string|lower) != 'overdue' %}
+              {{ row.response_value }}
+              {% else %}
+              -
+              {% endif %}
+            </div>
+            <div class="admin-mobile-badge-wrap">
+              {% set task_status_text = (row.status or "OVERDUE")|upper %}
+              <span class="admin-mobile-status-badge {% if (row.status or 'overdue')|lower == 'overdue' %}is-overdue{% else %}is-default{% endif %}">
+                <span class="admin-mobile-status-dot"></span>{{ task_status_text }}
+              </span>
+            </div>
+          </div>
+          <div class="admin-mobile-card-action">
+            {% if row.response_file_path and row.response_file_path.startswith('/uploads/') %}
+            <button class="btn admin-mobile-open-btn js-open-image" type="button" data-src="{{ row.response_file_path }}" {% if row.response_file_path_2 %}data-src2="{{ row.response_file_path_2 }}"{% endif %}>Open →</button>
+            {% else %}
+            <button class="btn admin-mobile-open-btn" type="button" disabled>Open →</button>
+            {% endif %}
+          </div>
+        </article>
+        {% endif %}
+        {% endfor %}
+        {% else %}
+        {% for row in readings %}
+        <article
+          class="admin-mobile-reading-card"
+          data-meter="{{ row.meter_type }}"
+          data-user="{{ row.username }}"
+          data-team="{{ row.team or '' }}"
+          data-label="{{ row.label }}"
+          data-created="{{ row.created_at }}"
+          data-value="{{ row.value or '' }}"
+          data-status="{{ (row.status or 'overdue')|lower }}"
+          data-ocrjson="{{ (row.ocr_json or '')|e }}"
+          data-image-taken="{{ row.image_taken_at or '' }}"
+          data-image-taken2="{{ row.image_taken_at_2 or '' }}"
+        >
+          <div class="admin-mobile-card-main">
+            <div class="admin-mobile-user">{{ row.username }}</div>
+            <div class="admin-mobile-value">{% if row.value %}{{ row.value }}{% else %}-{% endif %}</div>
+            <div class="admin-mobile-badge-wrap">
+              {% set status_text = (row.status or "OVERDUE")|upper %}
+              <span class="admin-mobile-status-badge {% if (row.status or 'overdue')|lower == 'overdue' %}is-overdue{% else %}is-default{% endif %}">
+                <span class="admin-mobile-status-dot"></span>{{ status_text }}
+              </span>
+            </div>
+          </div>
+          <div class="admin-mobile-card-action">
+            {% if row.filename %}
+            <button class="btn admin-mobile-open-btn js-open-image" type="button" data-src="/uploads/{{ row.filename }}" {% if row.filename_2 %}data-src2="/uploads/{{ row.filename_2 }}"{% endif %}>Open →</button>
+            {% else %}
+            <button class="btn admin-mobile-open-btn" type="button" disabled>Open →</button>
+            {% endif %}
+          </div>
+        </article>
+        {% endfor %}
+        {% for row in task_instances %}
+        <article
+          class="admin-mobile-reading-card"
+          data-meter="task"
+          data-user="{{ row.assigned_username or row.assigned_user_id }}"
+          data-team="{{ row.assigned_team_id or '' }}"
+          data-label="{{ row.title }}"
+          data-created="{{ row.submitted_at or row.deadline_at }}"
+          data-value="{{ '' if (row.response_value|string|lower) == 'overdue' else (row.response_value or '') }}"
+          data-status="{{ (row.status or 'overdue')|lower }}"
+          data-ai-result="{{ (row.ai_result_reference or '')|e }}"
+          data-image-taken="{{ row.response_image_taken_at or '' }}"
+          data-image-taken2="{{ row.response_image_taken_at_2 or '' }}"
+        >
+          <div class="admin-mobile-card-main">
+            <div class="admin-mobile-user">{{ row.assigned_username or row.assigned_user_id }}</div>
+            <div class="admin-mobile-value">
+              {% if row.response_value is not none and (row.response_value|string|lower) != 'overdue' %}
+              {{ row.response_value }}
+              {% else %}
+              -
+              {% endif %}
+            </div>
+            <div class="admin-mobile-badge-wrap">
+              {% set task_status_text = (row.status or "OVERDUE")|upper %}
+              <span class="admin-mobile-status-badge {% if (row.status or 'overdue')|lower == 'overdue' %}is-overdue{% else %}is-default{% endif %}">
+                <span class="admin-mobile-status-dot"></span>{{ task_status_text }}
+              </span>
+            </div>
+          </div>
+          <div class="admin-mobile-card-action">
+            {% if row.response_file_path and row.response_file_path.startswith('/uploads/') %}
+            <button class="btn admin-mobile-open-btn js-open-image" type="button" data-src="{{ row.response_file_path }}" {% if row.response_file_path_2 %}data-src2="{{ row.response_file_path_2 }}"{% endif %}>Open →</button>
+            {% else %}
+            <button class="btn admin-mobile-open-btn" type="button" disabled>Open →</button>
+            {% endif %}
+          </div>
+        </article>
+        {% endfor %}
+        {% endif %}
+      </div>
+      <div class="table-wrap dashboard-table-wrap dashboard-table-animated" id="adminTableWrap">
+        <table class="table mobile-friendly-table" id="readingsTable">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Timestamp</th>
+              <th>Task</th>
+              <th>User</th>
+              <th>Status</th>
+              <th class="num">Value</th>
+              <th>Image</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if use_combined_rows %}
+            {% for row in dashboard_rows %}
+            {% if row._row_kind == 'reading' %}
+            <tr data-meter="{{ row.meter_type }}" data-user="{{ row.username }}" data-team="{{ row.team or '' }}" data-label="{{ row.label }}" data-created="{{ row.created_at }}" data-value="{{ row.value or '' }}" data-filename="{{ row.filename or '' }}" data-status="{{ (row.status or '')|lower }}" data-ocrjson="{{ (row.ocr_json or '')|e }}" data-image-taken="{{ row.image_taken_at or '' }}" data-image-taken2="{{ row.image_taken_at_2 or '' }}">
+              <td>{{ row.id }}</td>
+              <td>{{ row.created_at }}</td>
+              <td><b>{{ row.label or row.meter_type }}</b></td>
+              <td>{{ row.username }}</td>
+              <td>
+                {% if row.status %}
+                <span class="pill {{ row.status_class }}">{{ row.status }}</span>
+                {% else %}
+                <span class="small-muted">-</span>
+                {% endif %}
+              </td>
+              <td class="num">
+                {% if row.value %}
+                <b>{{ row.value }}</b>
+                {% else %}
+                <span class="small-muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if row.filename %}
+                <button class="btn small js-open-image" type="button" data-src="/uploads/{{ row.filename }}" {% if row.filename_2 %}data-src2="/uploads/{{ row.filename_2 }}"{% endif %}>Open</button>
+                {% else %}
+                -
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr data-meter="task" data-user="{{ row.assigned_username or row.assigned_user_id }}" data-team="{{ row.assigned_team_id or '' }}" data-label="{{ row.title }}" data-created="{{ row.submitted_at or row.deadline_at }}" data-value="{{ '' if (row.response_value|string|lower) == 'overdue' else (row.response_value or '') }}" data-status="{{ (row.status or '')|lower }}" data-ai-result="{{ (row.ai_result_reference or '')|e }}" data-image-taken="{{ row.response_image_taken_at or '' }}" data-image-taken2="{{ row.response_image_taken_at_2 or '' }}">
+              <td>{{ row.id }}</td>
+              <td>{{ row.submitted_at or row.deadline_at }}</td>
+              <td><b>{{ row.title }}</b></td>
+              <td>{{ row.assigned_username or row.assigned_user_id }}</td>
+              <td>
+                <span class="pill {% if row.status == 'overdue' %}high{% elif row.status in ['submitted','late','completed'] %}ok{% else %}low{% endif %}">
+                  {{ row.status }}
+                </span>
+              </td>
+              <td class="num">
+                {% if row.response_value is not none and (row.response_value|string|lower) != 'overdue' %}
+                {{ row.response_value }}
+                {% if row.response_fuel_consumed is not none %}
+                <div class="small-muted">{{ row.response_fuel_consumed }} L</div>
+                {% endif %}
+                {% else %}
+                -
+                {% endif %}
+              </td>
+              <td>
+                {% if row.response_file_path and row.response_file_path.startswith('/uploads/') %}
+                <button class="btn small js-open-image" type="button" data-src="{{ row.response_file_path }}" {% if row.response_file_path_2 %}data-src2="{{ row.response_file_path_2 }}"{% endif %}>Open</button>
+                {% else %}
+                -
+                {% endif %}
+              </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+            {% else %}
+            {% for row in readings %}
+            <tr data-meter="{{ row.meter_type }}" data-user="{{ row.username }}" data-team="{{ row.team or '' }}" data-label="{{ row.label }}" data-created="{{ row.created_at }}" data-value="{{ row.value or '' }}" data-filename="{{ row.filename or '' }}" data-status="{{ (row.status or '')|lower }}" data-ocrjson="{{ (row.ocr_json or '')|e }}" data-image-taken="{{ row.image_taken_at or '' }}" data-image-taken2="{{ row.image_taken_at_2 or '' }}">
+              <td>{{ row.id }}</td>
+              <td>{{ row.created_at }}</td>
+              <td><b>{{ row.label or row.meter_type }}</b></td>
+              <td>{{ row.username }}</td>
+              <td>
+                {% if row.status %}
+                <span class="pill {{ row.status_class }}">{{ row.status }}</span>
+                {% else %}
+                <span class="small-muted">-</span>
+                {% endif %}
+              </td>
+              <td class="num">
+                {% if row.value %}
+                <b>{{ row.value }}</b>
+                {% else %}
+                <span class="small-muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if row.filename %}
+                <button class="btn small js-open-image" type="button" data-src="/uploads/{{ row.filename }}" {% if row.filename_2 %}data-src2="/uploads/{{ row.filename_2 }}"{% endif %}>Open</button>
+                {% else %}
+                -
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+            {% for row in task_instances %}
+            <tr data-meter="task" data-user="{{ row.assigned_username or row.assigned_user_id }}" data-team="{{ row.assigned_team_id or '' }}" data-label="{{ row.title }}" data-created="{{ row.submitted_at or row.deadline_at }}" data-value="{{ '' if (row.response_value|string|lower) == 'overdue' else (row.response_value or '') }}" data-status="{{ (row.status or '')|lower }}" data-ai-result="{{ (row.ai_result_reference or '')|e }}" data-image-taken="{{ row.response_image_taken_at or '' }}" data-image-taken2="{{ row.response_image_taken_at_2 or '' }}">
+              <td>{{ row.id }}</td>
+              <td>{{ row.submitted_at or row.deadline_at }}</td>
+              <td><b>{{ row.title }}</b></td>
+              <td>{{ row.assigned_username or row.assigned_user_id }}</td>
+              <td>
+                <span class="pill {% if row.status == 'overdue' %}high{% elif row.status in ['submitted','late','completed'] %}ok{% else %}low{% endif %}">
+                  {{ row.status }}
+                </span>
+              </td>
+              <td class="num">
+                {% if row.response_value is not none and (row.response_value|string|lower) != 'overdue' %}
+                {{ row.response_value }}
+                {% if row.response_fuel_consumed is not none %}
+                <div class="small-muted">{{ row.response_fuel_consumed }} L</div>
+                {% endif %}
+                {% else %}
+                -
+                {% endif %}
+              </td>
+              <td>
+                {% if row.response_file_path and row.response_file_path.startswith('/uploads/') %}
+                <button class="btn small js-open-image" type="button" data-src="{{ row.response_file_path }}" {% if row.response_file_path_2 %}data-src2="{{ row.response_file_path_2 }}"{% endif %}>Open</button>
+                {% else %}
+                -
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <h3 class="empty-title">No records uploaded yet</h3>
+        <p class="empty-copy">As soon as users upload entries or receive tasks, this table will populate automatically.</p>
+      </div>
+      {% endif %}
+      <div id="adminAutoRefresh" data-latest-id="{{ latest_reading_id or 0 }}" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+{% set active_page = "dashboard" %}
+{% include "_partials/bottom_nav.html" %}
+{% include "_partials/alerts_modal.html" %}
+
+<div class="modal" id="modal" aria-hidden="true">
+  <div class="modal-card image-modal-card">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="modalTitle">Reading</div>
+        <div class="small-muted" id="modalSub"></div>
+      </div>
+      <button class="modal-close-btn" type="button" id="modalClose" aria-label="Close image viewer">&times;</button>
+    </div>
+    <div class="modal-body image-modal-layout">
+      <div class="image-modal-main">
+        <div id="modalMeta" class="small-muted" style="margin-bottom:12px;"></div>
+        <div id="modalImages" class="imggrid"></div>
+      </div>
+      <aside id="modalInfo" class="image-modal-info"></aside>
+    </div>
+  </div>
+</div>
+
+<!-- CHAT POPUP -->
+<div class="modal chat-modal" id="chatPopup" aria-hidden="true">
+  <div class="modal-card chat-shell">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Open Messages</div>
+        <div class="small-muted" id="chatPresenceLine">Secure in-app chat</div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn small" type="button" id="chatNewGroupBtn">New Group</button>
+        <button class="modal-close-btn" type="button" id="chatCloseBtn" aria-label="Close messages">&times;</button>
+      </div>
+    </div>
+    <div class="modal-body chat-layout">
+      <aside class="chat-list-pane">
+        <div class="chat-list-head">
+          <div class="chat-page-title">Messages</div>
+          <button class="btn small" type="button" id="chatSidebarOptionsBtn">⋯</button>
+        </div>
+        <div class="chat-search-wrap">
+          <span class="chat-search-icon">🔎</span>
+          <input class="input" id="chatSearchInput" placeholder="Search messages.." />
+        </div>
+        <div class="chat-archive-row">
+          <div class="chat-archive-label" id="chatArchivedLabel">Archived messages (0)</div>
+          <button class="chat-archive-action" type="button" id="chatToggleArchivedBtn">View all</button>
+        </div>
+        <div id="chatConversations" class="chat-conversations"></div>
+      </aside>
+      <section class="chat-thread-pane">
+        <div class="chat-thread-head">
+          <div class="chat-thread-left">
+            <button class="btn small" type="button" id="chatBackBtn">←</button>
+            <div class="chat-thread-avatar" id="chatThreadAvatar">C</div>
+            <div>
+              <div id="chatThreadTitle" class="chat-thread-title">Select a conversation</div>
+              <div id="chatThreadMeta" class="small-muted"></div>
+            </div>
+          </div>
+          <button class="btn small" type="button" id="chatThreadMenuBtn">⋯</button>
+        </div>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-composer">
+          <div class="chat-composer-wrap">
+            <textarea class="input" id="chatComposerInput" placeholder="Write your message..." rows="2"></textarea>
+            <button class="chat-send-arrow" type="button" id="chatSendBtn" aria-label="Send message">➤</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+function setupStatusTabs({ tabsId, statusSelectId, animatedIds = [] }) {
+  const tabsWrap = document.getElementById(tabsId);
+  const statusSelect = document.getElementById(statusSelectId);
+  if (!tabsWrap || !statusSelect || typeof setupFiltering !== "function") return;
+  const tabs = Array.from(tabsWrap.querySelectorAll("[data-status-tab]"));
+  const animatedEls = animatedIds.map((id) => document.getElementById(id)).filter(Boolean);
+  const normalizeStatusBucket = (rawStatus) => {
+    const status = String(rawStatus || "").toLowerCase().trim();
+    if (["submitted", "completed", "late"].includes(status)) return "submitted";
+    if (status === "overdue") return "overdue";
+    return "pending";
+  };
+  const tableItems = Array.from(document.querySelectorAll("#readingsTable tbody tr"));
+  const mobileItems = Array.from(document.querySelectorAll("#adminMobileReadings .admin-mobile-reading-card"));
+  const allItems = tableItems.length ? tableItems : mobileItems;
+
+  const getCounts = () => {
+    const counts = { submitted: 0, pending: 0, overdue: 0 };
+    allItems.forEach((item) => {
+      const bucket = normalizeStatusBucket(item.dataset.status || "");
+      counts[bucket] += 1;
+    });
+    return counts;
+  };
+
+  const updateCounts = () => {
+    const counts = getCounts();
+    Object.entries(counts).forEach(([key, value]) => {
+      const badge = tabsWrap.querySelector(`[data-status-count="${key}"]`);
+      if (badge) badge.textContent = String(value);
+    });
+  };
+
+  const syncActiveTab = () => {
+    const current = String(statusSelect.value || "pending").toLowerCase();
+    tabs.forEach((tab) => {
+      const active = tab.dataset.statusTab === current;
+      tab.classList.toggle("is-active", active);
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+    });
+  };
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const nextStatus = String(tab.dataset.statusTab || "pending").toLowerCase();
+      animatedEls.forEach((el) => el.classList.add("is-switching"));
+      window.setTimeout(() => {
+        statusSelect.value = nextStatus;
+        statusSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        syncActiveTab();
+        window.setTimeout(() => animatedEls.forEach((el) => el.classList.remove("is-switching")), 160);
+      }, 40);
+    });
+  });
+
+  document.addEventListener("dashboard:filter-changed", (event) => {
+    if (event.detail?.tableId !== "readingsTable") return;
+    syncActiveTab();
+  });
+
+  const counts = getCounts();
+  updateCounts();
+  if (!["submitted", "pending", "overdue"].includes(String(statusSelect.value || "").toLowerCase())) {
+    const firstAvailable = ["submitted", "pending", "overdue"].find((key) => counts[key] > 0) || "pending";
+    statusSelect.value = firstAvailable;
+    statusSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  syncActiveTab();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const searchInput = document.getElementById("searchReadings");
+  if (searchInput && window.matchMedia("(max-width: 768px)").matches) {
+    searchInput.placeholder = "Search team / user / ID";
+  }
+  setupFiltering("readingsTable", "searchReadings", "meterFilter", "statusFilter");
+  setupStatusTabs({
+    tabsId: "adminStatusTabs",
+    statusSelectId: "statusFilter",
+    animatedIds: ["adminTableWrap", "adminMobileReadings"],
+  });
+});
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".js-open-image");
+  if (!btn) return;
+  e.preventDefault();
+  const src1 = btn.dataset.src || "";
+  const src2 = btn.dataset.src2 || "";
+  const modal = document.getElementById("modal");
+  const title = document.getElementById("modalTitle");
+  const sub = document.getElementById("modalSub");
+  const meta = document.getElementById("modalMeta");
+  const info = document.getElementById("modalInfo");
+  const images = document.getElementById("modalImages");
+  if (!modal || !images || !info || !src1) return;
+  const row = btn.closest("tr, .admin-mobile-reading-card");
+  const ocrRaw = row?.dataset.ocrjson || "";
+  const aiResult = row?.dataset.aiResult || "";
+  const label = row?.dataset.label || "Reading";
+  const user = row?.dataset.user || "-";
+  const team = row?.dataset.team || "-";
+  const created = row?.dataset.created || "-";
+  const imageTaken = row?.dataset.imageTaken || "";
+  const imageTaken2 = row?.dataset.imageTaken2 || "";
+  const status = row?.dataset.status || "-";
+  const value = row?.dataset.value || "-";
+  let detectorSource = "";
+  try {
+    const parsed = ocrRaw ? JSON.parse(ocrRaw) : null;
+    detectorSource = parsed?.object_detection?.source || parsed?.fire_point?.source || "";
+  } catch (_) {}
+  if (!detectorSource && aiResult) {
+    const match = aiResult.match(/Fire-point detection \(([^)]+)\)/i);
+    detectorSource = match ? match[1] : "";
+  }
+  if (meta) {
+    meta.textContent = detectorSource ? `Detector: ${detectorSource}` : "";
+  }
+
+  if (title) {
+    title.textContent = src2 ? "Uploaded Images" : "Uploaded Image";
+  }
+  if (sub) {
+    sub.textContent = "Scroll to inspect the full image";
+  }
+  const esc = (value) => String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+  const detailRows = [
+    { label: "User", value: user },
+    { label: "Team", value: team !== "-" ? `Team ${team}` : "-" },
+    { label: "Task", value: label || "-" },
+    { label: "Status", value: status ? status.replace(/_/g, " ") : "-" },
+    { label: "Value", value },
+    { label: "Time", value: created },
+  ];
+  if (imageTaken) detailRows.push({ label: src2 ? "Start Image Taken" : "Image Taken", value: imageTaken });
+  if (imageTaken2) detailRows.push({ label: "End Image Taken", value: imageTaken2 });
+  info.innerHTML = `
+    <div class="image-modal-info-title">Submission Details</div>
+    <div class="image-modal-info-list">
+      ${detailRows.map((item) => `
+        <div class="image-modal-info-row">
+          <div class="image-modal-info-label">${esc(item.label)}</div>
+          <div class="image-modal-info-value">${esc(item.value)}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+
+  const cards = [];
+  cards.push(renderUploadImageCard({
+    src: src1,
+    title: src2 ? "Start Image" : "Image",
+    alt: src2 ? "Start image" : "Image",
+    eager: true,
+  }));
+  if (src2) {
+    cards.push(renderUploadImageCard({
+      src: src2,
+      title: "End Image",
+      alt: "End image",
+      eager: true,
+    }));
+  }
+  images.innerHTML = cards.join("");
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+});
+
+document.getElementById("modalClose")?.addEventListener("click", () => {
+  const modal = document.getElementById("modal");
+  if (!modal) return;
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+});
+
+document.getElementById("modal")?.addEventListener("click", (e) => {
+  const modal = document.getElementById("modal");
+  if (!modal) return;
+  if (e.target === modal) {
+    modal.classList.remove("open");
+    modal.setAttribute("aria-hidden", "true");
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+    {% set dashboard_href = '/' %}
+    {% if user and user.role == 'admin' %}
+      {% set dashboard_href = '/admin' %}
+    {% elif user and user.role == 'coadmin' %}
+      {% set dashboard_href = '/coadmin/' ~ user.team %}
+    {% elif user and user.role == 'user' %}
+      {% set dashboard_href = '/tasks' %}
+    {% endif %}
+    <a class="brand" href="{{ dashboard_href }}" aria-label="Go to dashboard">
+      <img class="logo" src="/static/icons/newicon.png?v={{ static_version }}" alt="DET logo">
+      <div>
+        <div>DET MONITORING APPLICATION</div>
+        <div class="small-muted">{{ brand_subtitle }}</div>
+      </div>
+    </a>

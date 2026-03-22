@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% set page_title = "User — DET MONITORING APPLICATION" %}
+  {% include "_partials/head_assets.html" %}
+</head>
+
+<body class="app-shell">
+
+<!-- NAV -->
+<div class="nav">
+  <div class="nav-inner">
+    {% set brand_subtitle = "User Dashboard" %}
+    {% include "_partials/nav_brand.html" %}
+
+    <div class="badges">
+      <div class="badge">Team: <strong>{{ user.team }}</strong></div>
+      <div class="badge">User: <strong>{{ user.username }}</strong></div>
+      <a class="btn" href="/tasks">My Tasks</a>
+      <a class="btn" href="/settings">Settings</a>
+      <button class="btn" type="button" id="openChatPopupBtn" onclick="window.__openChatPopup && window.__openChatPopup()">Open Messages</button>
+      <button class="btn btn-install js-install-app" type="button" hidden style="display:none;">Install App</button>
+      <a class="btn btn-signout" href="/logout">Sign Out</a>
+    </div>
+  </div>
+</div>
+{% include "_partials/mobile_header.html" %}
+
+
+<div class="container">
+  <div id="chatMeta" data-user-id="{{ user.id }}" data-role="{{ user.role }}" data-team="{{ user.team or '' }}"></div>
+
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">User Workspace</h1>
+      <p class="page-lead">Respond to assigned tasks and review recent processed results.</p>
+    </div>
+  </div>
+  {% include "_partials/install_hint.html" %}
+
+  {% if error %}
+    <div class="toast error">{{ error }}</div>
+  {% endif %}
+  <!-- TASK RESPONSE ONLY -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-header-row">
+        <div>
+          <div class="panel-title">Submit Through My Tasks</div>
+          <div class="panel-sub">Direct upload is disabled. Admin/Coadmin will assign tasks. Open My Tasks to submit image/video responses.</div>
+        </div>
+
+        <div class="actions">
+          <a class="btn primary" href="/tasks">Open My Tasks</a>
+          <a class="btn" href="/download/csv/my">Download My CSV</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RECENT READINGS -->
+  <div class="panel" style="margin-top:16px;">
+    <div class="panel-header">
+      <div class="panel-header-row">
+        <div>
+          <div class="panel-title">My Recent Readings</div>
+          <div class="panel-sub">Click a value or "Open" to review details on this page</div>
+        </div>
+
+        <div class="filters">
+          <input id="searchReadings" class="input" placeholder="Search label/value/type..." />
+          <select id="meterFilter">
+            <option value="all">All Task Titles</option>
+            <option value="earthing">Earthing Reading</option>
+            <option value="temp">Temperature Reading</option>
+            <option value="voltage">Voltage Reading</option>
+            <option value="odometer">Odometer Reading</option>
+            <option value="fire_point">Fire Point Check</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-body">
+      {% if readings and readings|length > 0 %}
+      <div class="table-wrap">
+        <table class="table mobile-friendly-table" id="readingsTable">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Meter</th>
+              <th>Label</th>
+              <th class="num">Value</th>
+              <th class="num odometer-col">Start</th>
+              <th class="num odometer-col">End</th>
+              <th class="num odometer-col">Distance</th>
+              <th class="num odometer-col">Fuel Econ</th>
+              <th class="num odometer-col">Fuel Used</th>
+              <th>Status</th>
+              <th>Image</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in readings %}
+            <tr
+              data-meter="{{ r.meter_type }}"
+              data-filename="{{ r.filename }}"
+              data-filename2="{{ r.filename_2 or '' }}"
+              data-ocrjson="{{ (r.ocr_json or '')|e }}"
+              data-debug-yolo="{{ r.debug_yolo or '' }}"
+              data-debug-crop="{{ r.debug_crop or '' }}"
+              data-debug-prep="{{ r.debug_prep or '' }}"
+              data-value="{{ r.value or '' }}"
+              data-created="{{ r.created_at }}"
+              data-label="{{ r.label }}"
+              data-image-taken="{{ r.image_taken_at or '' }}"
+              data-image-taken2="{{ r.image_taken_at_2 or '' }}"
+            >
+              <td>{{ r.created_at }}</td>
+              <td><b>{{ r.meter_type }}</b></td>
+              <td>{{ r.label }}</td>
+
+              <td class="num">
+                {% if r.value %}
+                  <button class="linklike js-open-reading" type="button">{{ r.value }}</button>
+                {% else %}
+                  <span class="small-muted">-</span>
+                {% endif %}
+              </td>
+              <td class="num odometer-col">{{ r.odometer_start or '-' }}</td>
+              <td class="num odometer-col">{{ r.odometer_end or '-' }}</td>
+              <td class="num odometer-col">{{ r.distance_diff or '-' }}</td>
+              <td class="num odometer-col">{{ r.fuel_economy or '-' }}</td>
+              <td class="num odometer-col">{{ r.fuel_consumed or '-' }}</td>
+
+              <td>
+                {% if r.status %}
+                  <span class="pill {{ r.status_class }}">{{ r.status }}</span>
+                {% else %}
+                  <span class="small-muted">-</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if r.filename %}
+                  <button class="btn small js-open-image" type="button">Open</button>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <div class="empty-state">
+          <h3 class="empty-title">No readings yet</h3>
+          <p class="empty-copy">Upload your first meter image above. We will extract the reading and show diagnostics here.</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% set active_page = "dashboard" %}
+{% include "_partials/bottom_nav.html" %}
+{% include "_partials/alerts_modal.html" %}
+
+<!-- CHAT POPUP -->
+<div class="modal chat-modal" id="chatPopup" aria-hidden="true">
+  <div class="modal-card chat-shell">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Open Messages</div>
+        <div class="small-muted" id="chatPresenceLine">Secure in-app chat</div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn small" type="button" id="chatNewGroupBtn">New Group</button>
+        <button class="modal-close-btn" type="button" id="chatCloseBtn" aria-label="Close messages">&times;</button>
+      </div>
+    </div>
+    <div class="modal-body chat-layout">
+      <aside class="chat-list-pane">
+        <div class="chat-list-head">
+          <div class="chat-page-title">Messages</div>
+          <button class="btn small" type="button" id="chatSidebarOptionsBtn">⋯</button>
+        </div>
+        <div class="chat-search-wrap">
+          <span class="chat-search-icon">🔎</span>
+          <input class="input" id="chatSearchInput" placeholder="Search messages.." />
+        </div>
+        <div class="chat-archive-row">
+          <div class="chat-archive-label" id="chatArchivedLabel">Archived messages (0)</div>
+          <button class="chat-archive-action" type="button" id="chatToggleArchivedBtn">View all</button>
+        </div>
+        <div id="chatConversations" class="chat-conversations"></div>
+      </aside>
+      <section class="chat-thread-pane">
+        <div class="chat-thread-head">
+          <div class="chat-thread-left">
+            <button class="btn small" type="button" id="chatBackBtn">←</button>
+            <div class="chat-thread-avatar" id="chatThreadAvatar">C</div>
+            <div>
+              <div id="chatThreadTitle" class="chat-thread-title">Select a conversation</div>
+              <div id="chatThreadMeta" class="small-muted"></div>
+            </div>
+          </div>
+          <button class="btn small" type="button" id="chatThreadMenuBtn">⋯</button>
+        </div>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-composer">
+          <div class="chat-composer-wrap">
+            <textarea class="input" id="chatComposerInput" placeholder="Write your message..." rows="2"></textarea>
+            <button class="chat-send-arrow" type="button" id="chatSendBtn" aria-label="Send message">➤</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal" id="modal" aria-hidden="true">
+  <div class="modal-card image-modal-card">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="modalTitle">Reading</div>
+        <div class="small-muted" id="modalSub"></div>
+      </div>
+      <button class="btn" type="button" id="modalClose">Done</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="imggrid" id="modalImages"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  function qs(sel, el=document){ return el.querySelector(sel); }
+
+  const modal = qs("#modal");
+  const modalClose = qs("#modalClose");
+  const modalTitle = qs("#modalTitle");
+  const modalSub = qs("#modalSub");
+  const modalImages = qs("#modalImages");
+
+  function openModal() {
+    modal.classList.add("open");
+    modal.setAttribute("aria-hidden", "false");
+  }
+  function closeModal() {
+    modal.classList.remove("open");
+    modal.setAttribute("aria-hidden", "true");
+  }
+
+  function buildImages(row) {
+    const filename = row.dataset.filename || "";
+    const filename2 = row.dataset.filename2 || "";
+
+    const imgs = [];
+    if (filename) imgs.push({ title: "Uploaded", src: "/uploads/" + filename });
+    if (filename2) imgs.push({ title: "Uploaded 2", src: "/uploads/" + filename2 });
+
+    modalImages.innerHTML = "";
+
+    if (!imgs.length) {
+      modalImages.innerHTML = '<div class="small-muted">No images available.</div>';
+      return;
+    }
+
+    imgs.forEach(item => {
+      modalImages.insertAdjacentHTML("beforeend", renderUploadImageCard({
+        src: item.src,
+        title: item.title,
+        alt: item.title,
+        eager: true,
+      }));
+    });
+  }
+
+  function openRow(row) {
+    const created = row.dataset.created || "";
+    const imageTaken = row.dataset.imageTaken || "";
+    const imageTaken2 = row.dataset.imageTaken2 || "";
+    const meter = (row.dataset.meter || "").toUpperCase();
+    const label = row.dataset.label || "";
+    const value = row.dataset.value || "-";
+
+    modalTitle.textContent = `${meter} • ${value}`;
+    const parts = [`${created}`, label];
+    if (imageTaken) parts.push(`Image taken: ${imageTaken}`);
+    if (imageTaken2) parts.push(`Second image taken: ${imageTaken2}`);
+    modalSub.textContent = parts.filter(Boolean).join(" — ");
+    buildImages(row);
+    openModal();
+  }
+
+  // Close handlers
+  modalClose?.addEventListener("click", closeModal);
+  modal?.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+
+  // Click value OR View -> open modal (same page)
+  document.addEventListener("click", (e) => {
+    const btnValue = e.target.closest(".js-open-reading");
+    const btnImg = e.target.closest(".js-open-image");
+    if (!btnValue && !btnImg) return;
+
+    const row = e.target.closest("tr");
+    if (!row) return;
+    openRow(row);
+  });
+
+  // Keep your existing filtering if app.js provides it
+  document.addEventListener("DOMContentLoaded", () => {
+    if (typeof setupFiltering === "function") {
+      setupFiltering("readingsTable", "searchReadings", "meterFilter");
+    }
+    const meterFilter = document.getElementById("meterFilter");
+    const odometerCols = document.querySelectorAll("#readingsTable .odometer-col");
+    const syncOdometerColumns = () => {
+      const show = meterFilter && meterFilter.value === "odometer";
+      odometerCols.forEach((cell) => {
+        cell.style.display = show ? "" : "none";
+      });
+    };
+    meterFilter?.addEventListener("change", syncOdometerColumns);
+    syncOdometerColumns();
+  });
+})();
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  // direct upload removed; user responds via /tasks
+});
+</script>
+</body>
+</html>

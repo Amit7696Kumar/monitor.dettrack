@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% set page_title = "Users — DET MONITORING APPLICATION" %}
+  {% include "_partials/head_assets.html" %}
+</head>
+<body class="app-shell members-page">
+<div class="nav">
+  <div class="nav-inner">
+    {% set brand_subtitle = "Users" %}
+    {% include "_partials/nav_brand.html" %}
+    <div class="badges">
+      <div class="badge">Role: <strong>{{ user.role|upper }}</strong></div>
+      <a class="btn small" href="/alerts" aria-label="Open Alerts">🔔 Alerts</a>
+      {% if user.role == "admin" %}
+      <a class="btn" href="/admin">Dashboard</a>
+      {% else %}
+      <a class="btn" href="/coadmin/{{ user.team }}">Dashboard</a>
+      {% endif %}
+      <a class="btn" href="/tasks">Tasks</a>
+      <a class="btn" href="/settings">Settings</a>
+      <a class="btn btn-signout" href="/logout">Sign Out</a>
+    </div>
+  </div>
+</div>
+{% include "_partials/mobile_header.html" %}
+
+<div class="container">
+  <div id="chatMeta" data-user-id="{{ user.id }}" data-role="{{ user.role }}" data-team="{{ user.team or '' }}"></div>
+  {% set ns = namespace(admins=0, coadmins=0, users=0) %}
+  {% for item in users_list or [] %}
+    {% if item.role == "admin" %}
+      {% set ns.admins = ns.admins + 1 %}
+    {% elif item.role == "coadmin" %}
+      {% set ns.coadmins = ns.coadmins + 1 %}
+    {% elif item.role == "user" %}
+      {% set ns.users = ns.users + 1 %}
+    {% endif %}
+  {% endfor %}
+
+  <section class="members-hero">
+    <div class="members-hero-copy">
+      <div class="members-eyebrow">Member Directory</div>
+      <h1 class="page-title">Members</h1>
+      <p class="page-lead">Review account roles, team ownership, and field-member coverage from one clean directory.</p>
+      <div class="members-hero-actions">
+        {% if user.role == "admin" %}
+        <a class="btn primary" href="/admin">Open Dashboard</a>
+        {% else %}
+        <a class="btn primary" href="/coadmin/{{ user.team }}">Open Dashboard</a>
+        {% endif %}
+        <a class="btn" href="/settings">Manage Assignments</a>
+      </div>
+    </div>
+    <div class="members-hero-stats">
+      <div class="members-stat">
+        <div class="members-stat-label">Visible Members</div>
+        <div class="members-stat-value">{{ users_list|length if users_list else 0 }}</div>
+      </div>
+      <div class="members-stat">
+        <div class="members-stat-label">Field Users</div>
+        <div class="members-stat-value">{{ ns.users }}</div>
+      </div>
+      <div class="members-stat">
+        <div class="members-stat-label">Leads</div>
+        <div class="members-stat-value">{{ ns.admins + ns.coadmins }}</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">Team Member Directory</div>
+        <div class="panel-sub">Browse active members with role and team mapping at a glance.</div>
+      </div>
+    </div>
+    <div class="panel-body">
+      {% if users_list and users_list|length > 0 %}
+      <div class="member-card-list">
+        {% for u in users_list %}
+        <article class="member-card">
+          <div class="member-card-main">
+            <div class="member-card-avatar">{{ (u.username or "U")[:1]|upper }}</div>
+            <div class="member-card-copy">
+              <div class="member-card-name">{{ u.display_name or u.username }}</div>
+              <div class="member-card-username">@{{ u.username }}</div>
+            </div>
+          </div>
+          <div class="member-card-meta">
+            <span class="member-role-chip role-{{ u.role }}">{{ u.role|upper }}</span>
+            <span class="member-team-chip">{% if u.team is not none %}Team {{ u.team }}{% else %}No Team{% endif %}</span>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      <div class="table-wrap">
+        <table class="table members-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Member</th>
+              <th>Role</th>
+              <th>Team</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users_list %}
+            <tr>
+              <td>{{ u.id }}</td>
+              <td>
+                <div class="member-table-name">{{ u.display_name or u.username }}</div>
+                <div class="member-table-username">@{{ u.username }}</div>
+              </td>
+              <td><span class="member-role-chip role-{{ u.role }}">{{ u.role|upper }}</span></td>
+              <td>{{ u.team if u.team is not none else "-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <h3 class="empty-title">No users found</h3>
+        <p class="empty-copy">User records will appear here automatically.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% set active_page = "dashboard" %}
+{% include "_partials/bottom_nav.html" %}
+{% include "_partials/alerts_modal.html" %}
+</body>
+</html>

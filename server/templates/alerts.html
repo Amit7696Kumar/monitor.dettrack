@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% set page_title = "Alerts — DET MONITORING APPLICATION" %}
+  {% include "_partials/head_assets.html" %}
+</head>
+<body class="app-shell alerts-page">
+<div class="nav">
+  <div class="nav-inner">
+    {% set brand_subtitle = "Alerts" %}
+    {% include "_partials/nav_brand.html" %}
+    <div class="badges">
+      <div class="badge">Role: <strong>{{ user.role|upper }}</strong></div>
+      <div class="badge">Unread Alerts: <strong id="unreadBadge">{{ unread_count }}</strong></div>
+      <a class="btn" href="/tasks">Tasks</a>
+      <a class="btn" href="/settings">Settings</a>
+      {% if user.role == "admin" %}
+      <a class="btn" href="/admin">Dashboard</a>
+      <form method="post" action="/alerts/clear/admin" onsubmit="return confirm('Clear all admin alerts?');" style="display:inline-flex;">
+        <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+        <button class="btn small btn-danger-outline" type="submit">Clear Alerts</button>
+      </form>
+      {% elif user.role == "coadmin" %}
+      <a class="btn" href="/coadmin/{{ user.team }}">Dashboard</a>
+      <form method="post" action="/alerts/clear/coadmin/{{ user.team }}" onsubmit="return confirm('Clear all alerts for this team?');" style="display:inline-flex;">
+        <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+        <button class="btn small btn-danger-outline" type="submit">Clear Alerts</button>
+      </form>
+      {% else %}
+      <a class="btn" href="/">Dashboard</a>
+      {% endif %}
+      <a class="btn btn-signout" href="/logout">Sign Out</a>
+    </div>
+  </div>
+</div>
+{% include "_partials/mobile_header.html" %}
+
+<div class="container">
+  <div id="chatMeta" data-user-id="{{ user.id }}" data-role="{{ user.role }}" data-team="{{ user.team or '' }}"></div>
+  {% set ns = namespace(high=0, low=0, ok=0) %}
+  {% for a in alerts or [] %}
+    {% if a.severity == "high" %}
+      {% set ns.high = ns.high + 1 %}
+    {% elif a.severity == "low" %}
+      {% set ns.low = ns.low + 1 %}
+    {% else %}
+      {% set ns.ok = ns.ok + 1 %}
+    {% endif %}
+  {% endfor %}
+
+  <section class="alerts-hero">
+    <div class="alerts-hero-copy">
+      <div class="alerts-eyebrow">Monitoring Center</div>
+      <h1 class="page-title">Alerts</h1>
+      <p class="page-lead">Track active warning signals, review severity, and clear items once they are acknowledged.</p>
+      {% if user.role in ["admin", "coadmin"] %}
+      <div class="alerts-hero-actions">
+        {% if user.role == "admin" %}
+        <form method="post" action="/alerts/clear/admin" onsubmit="return confirm('Clear all admin alerts?');" style="display:inline-flex;">
+          <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+          <button class="btn small btn-danger-outline" type="submit">Clear All Alerts</button>
+        </form>
+        {% else %}
+        <form method="post" action="/alerts/clear/coadmin/{{ user.team }}" onsubmit="return confirm('Clear all alerts for this team?');" style="display:inline-flex;">
+          <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+          <button class="btn small btn-danger-outline" type="submit">Clear All Alerts</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="alerts-hero-stats">
+      <div class="alerts-stat">
+        <div class="alerts-stat-label">Unread</div>
+        <div class="alerts-stat-value">{{ unread_count }}</div>
+      </div>
+      <div class="alerts-stat">
+        <div class="alerts-stat-label">High Severity</div>
+        <div class="alerts-stat-value">{{ ns.high }}</div>
+      </div>
+      <div class="alerts-stat">
+        <div class="alerts-stat-label">Visible Alerts</div>
+        <div class="alerts-stat-value">{{ alerts|length if alerts else 0 }}</div>
+      </div>
+    </div>
+  </section>
+
+  {% if user.role in ["admin", "coadmin"] %}
+  <div class="alerts-mobile-actions">
+    {% if user.role == "admin" %}
+    <form method="post" action="/alerts/clear/admin" onsubmit="return confirm('Clear all admin alerts?');" style="display:inline-flex;">
+      <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+      <button class="btn small btn-danger-outline" type="submit">Clear Alerts</button>
+    </form>
+    {% else %}
+    <form method="post" action="/alerts/clear/coadmin/{{ user.team }}" onsubmit="return confirm('Clear all alerts for this team?');" style="display:inline-flex;">
+      <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+      <button class="btn small btn-danger-outline" type="submit">Clear Alerts</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">Alert Feed</div>
+        <div class="panel-sub">Review each event, prioritize high-risk items, and mark entries once handled.</div>
+      </div>
+    </div>
+    <div class="panel-body">
+      {% if alerts and alerts|length > 0 %}
+      <div class="alerts-list alerts-list-rich">
+        {% for a in alerts %}
+        {% set sev = a.severity if a.severity in ['high','low'] else 'ok' %}
+        <div class="alert-card alert-card-rich {{ sev }}">
+          <div class="alert-top">
+            <div>
+              <div>
+                <span class="pill {{ sev }}">{{ (a.severity or 'ok')|upper }}</span>
+                <span class="alert-message">{{ a.message }}</span>
+              </div>
+              <div class="alert-meta">
+                <span>Created: {{ a.created_at }}</span>
+                <span>Status: {% if a.is_read %}Read{% else %}Unread{% endif %}</span>
+              </div>
+            </div>
+            {% if not a.is_read %}
+            <form method="post" action="/alerts/{{ a.id }}/read">
+              <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+              <button class="btn small" type="submit">Mark as Read</button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <h3 class="empty-title">No active alerts</h3>
+        <p class="empty-copy">Everything looks stable right now.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% set active_page = "dashboard" %}
+{% include "_partials/bottom_nav.html" %}
+</body>
+</html>

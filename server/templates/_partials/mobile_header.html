@@ -1,0 +1,34 @@
+{% set dashboard_href = '/' %}
+{% if user and user.role == 'admin' %}
+  {% set dashboard_href = '/admin' %}
+{% elif user and user.role == 'coadmin' %}
+  {% set dashboard_href = '/coadmin/' ~ user.team %}
+{% elif user and user.role == 'user' %}
+  {% set dashboard_href = '/tasks' %}
+{% endif %}
+<header class="app-mobile-header">
+  <div class="app-mobile-top">
+    <a class="app-mobile-brand" href="{{ dashboard_href }}" aria-label="Go to dashboard">
+      <img class="logo" src="/static/icons/newicon.png?v={{ static_version }}" alt="DET logo">
+      <div class="app-mobile-brand-copy">
+        <div class="app-mobile-app">DET MONITORING APPLICATION</div>
+        <div class="app-mobile-module">{{ brand_subtitle or "Task Module" }}</div>
+      </div>
+    </a>
+    <div class="app-mobile-icons">
+      {% if user.role != "user" %}
+      <a class="app-icon-btn" href="/alerts" aria-label="Notifications">
+        <span>🔔</span>
+        {% if unread_count and unread_count > 0 %}
+        <span class="app-icon-badge">{{ unread_count }}</span>
+        {% endif %}
+      </a>
+      {% if user.role == "coadmin" %}
+      <a class="app-icon-btn" href="/users" aria-label="Users">👥</a>
+      {% else %}
+      <a class="app-icon-btn" href="/teams" aria-label="Teams">👥</a>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+</header>

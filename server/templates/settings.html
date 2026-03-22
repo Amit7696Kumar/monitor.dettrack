@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% set page_title = "Settings — DET MONITORING APPLICATION" %}
+  {% include "_partials/head_assets.html" %}
+</head>
+
+<body class="app-shell settings-page">
+
+<div class="nav">
+  <div class="nav-inner">
+    {% set brand_subtitle = "Settings" %}
+    {% include "_partials/nav_brand.html" %}
+
+    <div class="badges">
+      <div class="badge">Role: <strong>{{ user.role|upper }}</strong></div>
+      {% if user.team %}
+      <div class="badge">Team: <strong>{{ user.team }}</strong></div>
+      {% endif %}
+      <a class="btn" href="/tasks">Tasks</a>
+      <button class="btn" type="button" id="openChatPopupBtn" onclick="window.__openChatPopup && window.__openChatPopup()">Open Messages</button>
+      <a class="btn btn-signout" href="/logout">Sign Out</a>
+    </div>
+  </div>
+</div>
+{% include "_partials/mobile_header.html" %}
+
+<div class="container">
+  <div id="chatMeta" data-user-id="{{ user.id }}" data-role="{{ user.role }}" data-team="{{ user.team or '' }}"></div>
+
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Settings</h1>
+      <p class="page-lead">Manage team members and account actions.</p>
+    </div>
+  </div>
+  <div class="settings-mobile-signout">
+    <a class="btn btn-signout" href="/logout">Sign Out</a>
+  </div>
+
+  {% if request.query_params.get("info") %}
+    <div class="toast ok">{{ request.query_params.get("info") }}</div>
+  {% endif %}
+  {% if request.query_params.get("err") %}
+    <div class="toast error">{{ request.query_params.get("err") }}</div>
+  {% endif %}
+
+  {% if user.role in ["admin", "coadmin"] %}
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">Add Member To Team</div>
+        <div class="panel-sub">Only users with no team assignment are listed.</div>
+      </div>
+    </div>
+    <div class="panel-body">
+      <form method="post" action="/team-members/assign" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+        <label class="stack">
+          <span class="small-muted">Unassigned User</span>
+          <select class="input" name="user_id" required {% if not unassigned_users %}disabled{% endif %}>
+            <option value="">Select user</option>
+            {% for u in unassigned_users %}
+              {% set user_label = (u.display_name or '').strip() or ((u.email or '').split('@')[0] if u.email else '') or ((u.username or '').split('@')[0] if '@' in (u.username or '') else (u.username or '')) %}
+              <option value="{{ u.id }}">{{ user_label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        {% if user.role == "admin" %}
+        <label class="stack">
+          <span class="small-muted">Assign Team</span>
+          <select class="input" name="team_id" required>
+            <option value="">Select team</option>
+            {% for t in available_teams %}
+              <option value="{{ t }}">Team {{ t }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {% else %}
+          <input type="hidden" name="team_id" value="{{ user.team }}">
+          <div class="small-muted">Users will be assigned to Team {{ user.team }}.</div>
+        {% endif %}
+
+        <div class="actions">
+          <button class="btn primary" type="submit" {% if not unassigned_users %}disabled{% endif %}>Add Member</button>
+        </div>
+      </form>
+      {% if not unassigned_users %}
+      <div class="small-muted" style="margin-top:8px;">No unassigned users available.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:16px;">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">Remove Member From Team</div>
+        <div class="panel-sub">
+          {% if user.role == "admin" %}
+          Remove any assigned user from their current team.
+          {% else %}
+          Remove users from Team {{ user.team }}.
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="panel-body">
+      {% if team_members %}
+      <div class="stack">
+        {% for member in team_members %}
+          {% set member_label = (member.display_name or '').strip() or ((member.email or '').split('@')[0] if member.email else '') or ((member.username or '').split('@')[0] if '@' in (member.username or '') else (member.username or '')) %}
+          <form method="post" action="/team-members/remove" class="actions" style="justify-content:space-between; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid rgba(148,163,184,.2);">
+            <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+            <div>
+              <div><strong>{{ member_label }}</strong></div>
+              <div class="small-muted">Team {{ member.team }}</div>
+            </div>
+            <input type="hidden" name="user_id" value="{{ member.id }}">
+            <button class="btn" type="submit">Remove</button>
+          </form>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="small-muted">No assigned team members available to remove.</div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="panel">
+    <div class="panel-body">
+      <div class="small-muted">No team management options available for your role.</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="panel" style="margin-top:16px;">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">Account</div>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="grid2" style="align-items:start;">
+        <form method="post" action="/settings/username" class="stack">
+          <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+          <label class="stack">
+            <span class="small-muted">Username</span>
+            <input class="input" type="text" name="username" value="{{ user.username or '' }}" required>
+          </label>
+          <div class="actions">
+            <button class="btn primary" type="submit">Change Username</button>
+          </div>
+        </form>
+
+        <form method="post" action="/settings/password" class="stack">
+          <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+          <label class="stack">
+            <span class="small-muted">New Password</span>
+            <input class="input" type="password" name="new_password" required>
+          </label>
+          <label class="stack">
+            <span class="small-muted">Confirm Password</span>
+            <input class="input" type="password" name="confirm_password" required>
+          </label>
+          <div class="actions">
+            <button class="btn primary" type="submit">Change Password</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% set active_page = "settings" %}
+{% include "_partials/bottom_nav.html" %}
+{% include "_partials/alerts_modal.html" %}
+
+<!-- CHAT POPUP -->
+<div class="modal chat-modal" id="chatPopup" aria-hidden="true">
+  <div class="modal-card chat-shell">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Open Messages</div>
+        <div class="small-muted" id="chatPresenceLine">Secure in-app chat</div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn small" type="button" id="chatNewGroupBtn">New Group</button>
+        <button class="modal-close-btn" type="button" id="chatCloseBtn" aria-label="Close messages">&times;</button>
+      </div>
+    </div>
+    <div class="modal-body chat-layout">
+      <aside class="chat-list-pane">
+        <div class="chat-list-head">
+          <div class="chat-page-title">Messages</div>
+          <button class="btn small" type="button" id="chatSidebarOptionsBtn">⋯</button>
+        </div>
+        <div class="chat-search-wrap">
+          <span class="chat-search-icon">🔎</span>
+          <input class="input" id="chatSearchInput" placeholder="Search messages.." />
+        </div>
+        <div class="chat-archive-row">
+          <div class="chat-archive-label" id="chatArchivedLabel">Archived messages (0)</div>
+          <button class="chat-archive-action" type="button" id="chatToggleArchivedBtn">View all</button>
+        </div>
+        <div id="chatConversations" class="chat-conversations"></div>
+      </aside>
+      <section class="chat-thread-pane">
+        <div class="chat-thread-head">
+          <div class="chat-thread-left">
+            <button class="btn small" type="button" id="chatBackBtn">←</button>
+            <div class="chat-thread-avatar" id="chatThreadAvatar">C</div>
+            <div>
+              <div id="chatThreadTitle" class="chat-thread-title">Select a conversation</div>
+              <div id="chatThreadMeta" class="small-muted"></div>
+            </div>
+          </div>
+          <button class="btn small" type="button" id="chatThreadMenuBtn">⋯</button>
+        </div>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-composer">
+          <div class="chat-composer-wrap">
+            <textarea class="input" id="chatComposerInput" placeholder="Write your message..." rows="2"></textarea>
+            <button class="chat-send-arrow" type="button" id="chatSendBtn" aria-label="Send message">➤</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

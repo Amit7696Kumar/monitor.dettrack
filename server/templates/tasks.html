@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% set page_title = "Tasks — DET MONITORING APPLICATION" %}
+  {% include "_partials/head_assets.html" %}
+  <style>
+    .dashboard-status-tabs {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: none;
+      margin-bottom: 0;
+    }
+    .dashboard-status-tabs::-webkit-scrollbar { display: none; }
+    .dashboard-status-tab {
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      background: rgba(255,255,255,0.72);
+      color: #475569;
+      border-radius: 18px 18px 12px 12px;
+      padding: 12px 14px;
+      min-width: 138px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      transition: background 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+    }
+    .dashboard-status-tab:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+      color: #0f172a;
+    }
+    .dashboard-status-tab.is-active {
+      background: linear-gradient(135deg, #123b70, #1f5a9c);
+      color: #fff;
+      border-color: transparent;
+      box-shadow: 0 16px 30px rgba(18, 59, 112, 0.26);
+    }
+    .dashboard-status-tab.is-active .dashboard-status-tab-count {
+      background: rgba(255,255,255,0.18);
+      color: #fff;
+    }
+    .dashboard-status-tab-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .dashboard-status-tab-count {
+      min-width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.08);
+      color: #0f172a;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.84rem;
+      font-weight: 700;
+      padding: 0 10px;
+    }
+  </style>
+</head>
+<body class="app-shell tasks-v2 tasks-page">
+<div class="nav">
+  <div class="nav-inner">
+    {% set brand_subtitle = "Task Module" %}
+    {% include "_partials/nav_brand.html" %}
+    <div class="badges">
+      <div class="badge">Role: <strong>{{ user.role|upper }}</strong></div>
+      {% if user.role == "admin" %}
+      <a class="btn" href="/admin">Dashboard</a>
+      {% elif user.role == "coadmin" %}
+      <a class="btn" href="/coadmin/{{ user.team }}">Dashboard</a>
+      {% else %}
+      <a class="btn" href="/">Dashboard</a>
+      {% endif %}
+      <a class="btn" href="/settings">Settings</a>
+      <button class="btn" type="button" id="openChatPopupBtn" onclick="window.__openChatPopup && window.__openChatPopup()">Open Messages</button>
+      <button class="btn btn-install js-install-app" type="button" hidden style="display:none;">Install App</button>
+      <a class="btn btn-signout" href="/logout">Sign Out</a>
+    </div>
+  </div>
+</div>
+{% include "_partials/mobile_header.html" %}
+
+<div class="container">
+  <div id="chatMeta" data-user-id="{{ user.id }}" data-role="{{ user.role }}" data-team="{{ user.team or '' }}"></div>
+  <section class="tasks-hero">
+    <div class="tasks-hero-copy">
+      <div class="tasks-eyebrow">Task Control</div>
+      <h1 class="page-title">Task Overview</h1>
+      <p class="page-lead">Track task progress, create new assignments, and keep field submissions moving without friction.</p>
+      <div class="tasks-hero-actions">
+        {% if user.role == "admin" %}
+        <a class="btn primary" href="/admin">Open Dashboard</a>
+        {% elif user.role == "coadmin" %}
+        <a class="btn primary" href="/coadmin/{{ user.team }}">Open Dashboard</a>
+        {% else %}
+        <a class="btn primary" href="/settings">Account Settings</a>
+        {% endif %}
+        <button class="btn" type="button" id="openChatPopupBtnHero" onclick="window.__openChatPopup && window.__openChatPopup()">Open Messages</button>
+      </div>
+    </div>
+    <div class="tasks-hero-stats">
+      <div class="tasks-stat">
+        <div class="tasks-stat-label">Role</div>
+        <div class="tasks-stat-value">{{ user.role|upper }}</div>
+      </div>
+      {% if user.role == "user" %}
+      <div class="tasks-stat">
+        <div class="tasks-stat-label">Pending</div>
+        <div class="tasks-stat-value">{{ summary.pending }}</div>
+      </div>
+      <div class="tasks-stat">
+        <div class="tasks-stat-label">Overdue</div>
+        <div class="tasks-stat-value">{{ summary.overdue }}</div>
+      </div>
+      {% else %}
+      <div class="tasks-stat">
+        <div class="tasks-stat-label">Task Forms</div>
+        <div class="tasks-stat-value">{{ forms|length if forms else 0 }}</div>
+      </div>
+      <div class="tasks-stat">
+        <div class="tasks-stat-label">Active Instances</div>
+        <div class="tasks-stat-value">{{ instances|length if instances else 0 }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+  {% include "_partials/install_hint.html" %}
+
+  {% if error %}
+  <div class="toast error" style="margin-bottom:12px;">Task action failed: {{ error }}</div>
+  {% endif %}
+
+  {% if user.role == "user" %}
+  <div class="kpi tasks-kpi">
+    <div class="card kpi-total"><div class="label">Total</div><div class="value">{{ summary.total }}</div></div>
+    <div class="card kpi-pending"><div class="label">Pending</div><div class="value">{{ summary.pending }}</div></div>
+    <div class="card kpi-submitted"><div class="label">Submitted</div><div class="value">{{ summary.submitted }}</div></div>
+    <div class="card kpi-overdue"><div class="label">Overdue</div><div class="value">{{ summary.overdue }}</div></div>
+  </div>
+  {% endif %}
+
+  {% if user.role in ["admin", "coadmin"] %}
+  <div class="panel tasks-create-panel" style="margin-bottom:16px;">
+    <div class="panel-body">
+      <div class="dashboard-status-tabs" id="taskWorkspaceTabs" role="tablist" aria-label="Task workspace tabs">
+        <button class="dashboard-status-tab" type="button" id="showCreateTaskPanelBtn" data-task-workspace-tab="create" role="tab" aria-selected="false">
+          <span class="dashboard-status-tab-title">Create Task</span>
+          <span class="dashboard-status-tab-count">New</span>
+        </button>
+        <button class="dashboard-status-tab" type="button" id="showAssignedTasksPanelBtn" data-task-workspace-tab="assigned" role="tab" aria-selected="false">
+          <span class="dashboard-status-tab-title">Modify Task</span>
+          <span class="dashboard-status-tab-count">{{ owned_forms|length if owned_forms else 0 }}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel tasks-create-panel" id="createTaskPanel">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">Create Task</div>
+        <div class="panel-sub">Assign users, choose response type, deadline, AI toggle, and recurrence.</div>
+      </div>
+    </div>
+    <div class="panel-body">
+      <form method="post" action="/tasks/create" class="stack tasks-create-form">
+        <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+        <div class="tasks-create-grid">
+          <section class="tasks-create-section">
+            <div class="tasks-create-section-head">
+              <div class="tasks-create-section-title">Task Basics</div>
+              <div class="tasks-create-section-sub">Define the task title, instructions, and ideal target.</div>
+            </div>
+            <div class="stack">
+              <label class="field">
+                <span>Task Title</span>
+                <select class="input" name="title" id="taskTitleSelect" required>
+                  <option value="Earthing Reading">Earthing Reading</option>
+                  <option value="Temperature Reading">Temperature Reading</option>
+                  <option value="Voltage Reading">Voltage Reading</option>
+                  <option value="Odometer Reading">Odometer Reading</option>
+                  <option value="Fire Point Check">Fire Point Check</option>
+                  <option value="Custom">Custom</option>
+                </select>
+              </label>
+
+              <label class="field" id="customTaskTitleWrap" style="display:none;">
+                <span>Custom Task Title</span>
+                <input class="input" name="custom_title" id="customTaskTitleInput" placeholder="Enter custom task title">
+              </label>
+
+              <label class="field">
+                <span>Description / Instructions</span>
+                <textarea class="input" name="description" rows="4" placeholder="Write clear submission instructions"></textarea>
+              </label>
+
+              <label class="field">
+                <span id="idealValueLabel">Ideal Value (max)</span>
+                <input class="input" type="number" step="any" name="ideal_value" id="idealValueInput" placeholder="e.g. 2.0 for earthing">
+              </label>
+            </div>
+          </section>
+
+          <section class="tasks-create-section">
+            <div class="tasks-create-section-head">
+              <div class="tasks-create-section-title">Assignment & Schedule</div>
+              <div class="tasks-create-section-sub">Assign to multiple users at once or target an entire team.</div>
+            </div>
+            <div class="tasks-assign-layout">
+              <section class="tasks-subsection">
+                <div class="tasks-subsection-head">
+                  <div class="tasks-subsection-title">Assignment</div>
+                  <div class="tasks-subsection-copy">Choose whether this task goes to selected members or an entire team.</div>
+                </div>
+                <div class="stack">
+                  <label class="field">
+                    <span>Assign Scope</span>
+                    <select class="input" name="assigned_scope" id="assignedScope" required>
+                      <option value="users">Specific Users</option>
+                      <option value="team">Whole Team</option>
+                    </select>
+                  </label>
+
+                  <div class="field" id="assignTargetField">
+                    <span id="assignTargetLabel">Assign Users</span>
+                    <div id="assignUsersControls" class="tasks-user-picker">
+                      <div class="tasks-user-picker-toolbar">
+                        <div class="small-muted">Choose one or more users</div>
+                        <div class="tasks-user-picker-actions">
+                          <button class="btn small" type="button" id="selectAllAssignedUsersBtn">Select All</button>
+                          <button class="btn small" type="button" id="clearAssignedUsersBtn">Clear</button>
+                        </div>
+                      </div>
+                      <input class="input tasks-user-search" type="search" id="assignedUsersSearch" placeholder="Search users by name or ID">
+                      <div class="tasks-user-multiselect" id="assignedUsersMulti" role="listbox" aria-label="Assign multiple users" aria-multiselectable="true">
+                        {% for x in assignable_users %}
+                          <button class="tasks-user-option" type="button" data-user-id="{{ x.id }}" data-user-label="{{ x.username }} (ID {{ x.id }})" aria-pressed="false">
+                            <span class="tasks-user-option-name">{{ x.username }}</span>
+                            <span class="tasks-user-option-meta">ID {{ x.id }}</span>
+                          </button>
+                        {% endfor %}
+                      </div>
+                      <div class="small-muted">Click users to toggle selection. Selected users stay highlighted until you clear them.</div>
+                      <div id="assignedUsersList" class="tasks-selected-users"></div>
+                      <div id="assignedUsersHidden"></div>
+                    </div>
+                    <div id="assignTeamControls" class="tasks-team-picker" style="display:none;">
+                      <div class="small-muted">Assign this task to every user in the selected team.</div>
+                      <select class="input" name="assigned_team_id" id="assignedTeamSelect">
+                        {% if user.role == "admin" %}
+                          <option value="">Select team</option>
+                          {% for t in [1,2,3,4,5,6] %}
+                          <option value="{{ t }}">Team{{ t }}</option>
+                          {% endfor %}
+                        {% else %}
+                          <option value="{{ user.team }}">Team{{ user.team }}</option>
+                        {% endif %}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="tasks-subsection">
+                <div class="tasks-subsection-head">
+                  <div class="tasks-subsection-title">Schedule & Response</div>
+                  <div class="tasks-subsection-copy">Set the deadline and define how users are allowed to respond.</div>
+                </div>
+                <div class="stack">
+                  <div class="grid2">
+                    <label class="field">
+                      <span>Deadline Date</span>
+                      <input class="input" type="date" name="deadline_date" required>
+                    </label>
+                    <label class="field">
+                      <span>Deadline Time</span>
+                      <input class="input" type="time" name="deadline_time" required>
+                    </label>
+                  </div>
+
+                  <div class="field">
+                    <span>Allowed Response Types</span>
+                    <div class="filters tasks-inline-options">
+                      <label><input type="checkbox" name="allowed_types" value="pdf"> PDF</label>
+                      <label><input type="checkbox" name="allowed_types" value="photo" checked> Photo</label>
+                      <label><input type="checkbox" name="allowed_types" value="video"> Video</label>
+                    </div>
+                  </div>
+
+                  <label class="field" id="imageUploadCountField">
+                    <span>Number Of Images</span>
+                    <input class="input" type="number" min="1" step="1" name="image_upload_count" id="imageUploadCountSelect" value="1" placeholder="Enter number of images">
+                    <div class="small-muted">Type how many images should be required from the user. Odometer keeps its separate start/end flow.</div>
+                  </label>
+                </div>
+              </section>
+            </div>
+          </section>
+        </div>
+
+        <input type="hidden" name="question_type" value="upload">
+        <input type="hidden" name="number_unit" value="">
+        <input type="hidden" name="number_min" value="">
+        <input type="hidden" name="number_max" value="">
+
+        <div class="filters tasks-inline-options">
+          <label><input type="checkbox" name="ai_enabled" value="1"> Process Response Through AI</label>
+        </div>
+
+        <div class="filters tasks-inline-options">
+          <label><input type="checkbox" name="repeat_enabled" value="1" id="repeatEnabled"> Auto-create again</label>
+          <select class="input" name="repeat_type" id="repeatType" style="max-width:220px;" disabled>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+
+        <button class="btn primary" type="submit">Create Task</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="panel tasks-create-panel" id="assignedTasksPanel" style="margin-top:16px; display:none;">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">Modify Task</div>
+        <div class="panel-sub">Review and modify the tasks created by you.</div>
+      </div>
+    </div>
+    <div class="panel-body">
+      {% if owned_forms %}
+      <div class="task-card-list tasks-card-list">
+        {% for f in owned_forms %}
+        <article class="task-instance-card task-instance-card-rich">
+          <div class="task-card-row">
+            <div class="task-id">Form ID {{ f.id }}</div>
+            <span class="pill">{{ f.assigned_scope|upper }}</span>
+          </div>
+          <h3 class="task-card-title">{{ f.title }}</h3>
+          <p class="task-card-desc">{{ f.description or "-" }}</p>
+          <div class="task-meta-line">🕒 {{ f.deadline_at }}</div>
+          <div class="task-meta-line">🔁 {{ (f.repeat_type|capitalize) if f.repeat_enabled else "No repeat" }}</div>
+          <div class="task-meta-line">
+            👥
+            {% if f.assigned_scope == "team" %}
+              Team {{ f.assigned_team_id or "-" }}
+            {% else %}
+              {{ (f.assigned_user_ids|length) if f.assigned_user_ids else 0 }} users
+            {% endif %}
+          </div>
+          <div class="task-response-block">
+            {% if (f.creator_user_id or 0)|int == (user.id or 0)|int %}
+            <button
+              class="btn small"
+              type="button"
+              data-edit-task
+              data-form-id="{{ f.id }}"
+              data-title="{{ f.title|e }}"
+              data-description="{{ (f.description or '')|e }}"
+              data-scope="{{ f.assigned_scope }}"
+              data-assigned-users="{{ (f.assigned_user_ids or [])|join(',') }}"
+              data-assigned-team="{{ f.assigned_team_id or '' }}"
+              data-deadline-date="{{ f.deadline_date_value or '' }}"
+              data-deadline-time="{{ f.deadline_time_value or '' }}"
+              data-repeat-enabled="{{ 1 if f.repeat_enabled else 0 }}"
+              data-repeat-type="{{ f.repeat_type or 'daily' }}"
+            >
+              Modify Task
+            </button>
+            {% else %}
+            <span class="small-muted">Only the creator can modify this task.</span>
+            {% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <h3 class="empty-title">No tasks created by you yet</h3>
+        <p class="empty-copy">Create a task first, then you can modify its assignment and recurrence here.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="modal" id="editTaskModal" aria-hidden="true" style="display:none;">
+    <div class="modal-card" style="max-width:860px;">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title">Modify Task</div>
+          <div class="small-muted" id="editTaskMetaLine"></div>
+        </div>
+        <button class="modal-close-btn" type="button" id="editTaskCloseBtn" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form method="post" id="editTaskForm" class="stack">
+          <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+          <div class="tasks-create-grid">
+            <section class="tasks-create-section">
+              <div class="tasks-create-section-head">
+                <div class="tasks-create-section-title">Assignment</div>
+                <div class="tasks-create-section-sub">Change the users or team currently receiving this task.</div>
+              </div>
+              <div class="stack">
+                <label class="field">
+                  <span>Assign Scope</span>
+                  <select class="input" name="assigned_scope" id="editAssignedScope" required>
+                    <option value="users">Specific Users</option>
+                    <option value="team">Whole Team</option>
+                  </select>
+                </label>
+                <div class="field">
+                  <span id="editAssignTargetLabel">Assign Users</span>
+                  <div id="editAssignUsersControls" class="tasks-user-picker">
+                    <div class="tasks-user-picker-toolbar">
+                      <div class="small-muted">Choose one or more users</div>
+                      <div class="tasks-user-picker-actions">
+                        <button class="btn small" type="button" id="editSelectAllAssignedUsersBtn">Select All</button>
+                        <button class="btn small" type="button" id="editClearAssignedUsersBtn">Clear</button>
+                      </div>
+                    </div>
+                    <input class="input tasks-user-search" type="search" id="editAssignedUsersSearch" placeholder="Search users by name or ID">
+                    <div class="tasks-user-multiselect" id="editAssignedUsersMulti" role="listbox" aria-label="Modify assigned users" aria-multiselectable="true">
+                      {% for x in assignable_users %}
+                        <button class="tasks-user-option" type="button" data-user-id="{{ x.id }}" data-user-label="{{ x.username }} (ID {{ x.id }})" aria-pressed="false">
+                          <span class="tasks-user-option-name">{{ x.username }}</span>
+                          <span class="tasks-user-option-meta">ID {{ x.id }}</span>
+                        </button>
+                      {% endfor %}
+                    </div>
+                    <div id="editAssignedUsersHidden"></div>
+                  </div>
+                  <div id="editAssignTeamControls" class="tasks-team-picker" style="display:none;">
+                    <div class="small-muted">Assign this task to every user in the selected team.</div>
+                    <select class="input" name="assigned_team_id" id="editAssignedTeamSelect">
+                      {% if user.role == "admin" %}
+                        <option value="">Select team</option>
+                        {% for t in [1,2,3,4,5,6] %}
+                        <option value="{{ t }}">Team{{ t }}</option>
+                        {% endfor %}
+                      {% else %}
+                        <option value="{{ user.team }}">Team{{ user.team }}</option>
+                      {% endif %}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </section>
+            <section class="tasks-create-section">
+              <div class="tasks-create-section-head">
+                <div class="tasks-create-section-title">Schedule</div>
+                <div class="tasks-create-section-sub">Update deadline and recurrence for future allotments.</div>
+              </div>
+              <div class="stack">
+                <div class="grid2">
+                  <label class="field">
+                    <span>Deadline Date</span>
+                    <input class="input" type="date" name="deadline_date" id="editDeadlineDate" required>
+                  </label>
+                  <label class="field">
+                    <span>Deadline Time</span>
+                    <input class="input" type="time" name="deadline_time" id="editDeadlineTime" required>
+                  </label>
+                </div>
+                <div class="filters tasks-inline-options">
+                  <label><input type="checkbox" name="repeat_enabled" value="1" id="editRepeatEnabled"> Auto-create again</label>
+                  <select class="input" name="repeat_type" id="editRepeatType" style="max-width:220px;" disabled>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+              </div>
+            </section>
+          </div>
+          <div style="display:flex; gap:8px; justify-content:space-between;">
+            <button class="btn danger" type="button" id="editTaskDeleteBtn">Remove Task</button>
+            <div style="display:flex; gap:8px;">
+              <button class="btn" type="button" id="editTaskCancelBtn">Cancel</button>
+              <button class="btn primary" type="submit">Save Changes</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if user.role == "user" %}
+  <div style="margin-top:16px;">
+    <div>
+      {% if instances %}
+      <div class="task-card-list tasks-card-list">
+        {% for t in instances %}
+        <article class="task-instance-card task-instance-card-rich">
+          <div class="task-card-row">
+            <div class="task-id">ID {{ t.id }}</div>
+            <span class="pill task-status-pill {% if t.status == 'overdue' %}high{% elif t.status in ['submitted','late','completed'] %}ok{% else %}low{% endif %}">{{ t.status }}</span>
+          </div>
+          <h3 class="task-card-title">{{ t.title }}</h3>
+          <p class="task-card-desc">{{ t.description or "-" }}</p>
+          <div class="task-meta-line">🕒 {{ t.deadline_at }}</div>
+          {% if user.role != "user" %}
+          <div class="task-meta-line">👤 {{ t.assigned_username or t.assigned_user_id }}</div>
+          {% endif %}
+          <div class="task-meta-line">AI: {{ "Enabled" if t.ai_enabled else "Disabled" }}</div>
+
+          <div class="task-response-block">
+            {% if user.role == "user" %}
+              {% if t.status == "overdue" %}
+                <span class="small-muted">Deadline passed</span>
+              {% elif t.status in ["submitted", "late", "completed"] %}
+                <span class="small-muted">Already submitted</span>
+              {% else %}
+                <form method="post" action="/tasks/{{ t.id }}/submit" enctype="multipart/form-data" class="stack">
+                  <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+                  {% if (t.title or '')|lower == 'odometer reading' %}
+                  <label class="field">
+                    <span>Start Image</span>
+                    <input class="input" type="file" name="response_file_start" accept=".jpg,.jpeg,.png,.webp" required>
+                  </label>
+                  <label class="field">
+                    <span>End Image</span>
+                    <input class="input" type="file" name="response_file_end" accept=".jpg,.jpeg,.png,.webp" required>
+                  </label>
+                  <label class="field">
+                    <span>Average KMPL</span>
+                    <input class="input" type="text" value="{{ t.number_max if t.number_max is not none else '-' }}" readonly>
+                  </label>
+                  {% else %}
+                  <label class="field">
+                    <span>Upload File 1</span>
+                    <input class="input" type="file" name="response_file" {% if t.question_type != "number" %}required{% endif %}>
+                  </label>
+                  {% if (t.image_upload_count or 1)|int >= 2 %}
+                  <label class="field">
+                    <span>Upload File 2</span>
+                    <input class="input" type="file" name="response_file_2" required>
+                  </label>
+                  {% endif %}
+                  {% endif %}
+                  {% if t.question_type in ["number", "upload_number"] %}
+                  <input class="input" type="number" step="any" name="entered_number" placeholder="Enter numeric response{% if t.number_unit %} ({{ t.number_unit }}){% endif %}" {% if t.question_type == "number" %}required{% endif %}>
+                  {% endif %}
+                  <input class="input" name="remarks" placeholder="Remarks (optional)">
+                  <button class="btn small primary" type="submit">Submit</button>
+                </form>
+              {% endif %}
+            {% else %}
+              <span class="small-muted">Monitoring view</span>
+            {% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <h3 class="empty-title">No tasks found</h3>
+        <p class="empty-copy">Create a task form to assign users and collect PDF/photo/video responses.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% set active_page = "tasks" %}
+{% include "_partials/bottom_nav.html" %}
+{% include "_partials/alerts_modal.html" %}
+
+<!-- CHAT POPUP -->
+<div class="modal chat-modal" id="chatPopup" aria-hidden="true">
+  <div class="modal-card chat-shell">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Open Messages</div>
+        <div class="small-muted" id="chatPresenceLine">Secure in-app chat</div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn small" type="button" id="chatNewGroupBtn">New Group</button>
+        <button class="modal-close-btn" type="button" id="chatCloseBtn" aria-label="Close messages">&times;</button>
+      </div>
+    </div>
+    <div class="modal-body chat-layout">
+      <aside class="chat-list-pane">
+        <div class="chat-list-head">
+          <div class="chat-page-title">Messages</div>
+          <button class="btn small" type="button" id="chatSidebarOptionsBtn">⋯</button>
+        </div>
+        <div class="chat-search-wrap">
+          <span class="chat-search-icon">🔎</span>
+          <input class="input" id="chatSearchInput" placeholder="Search messages.." />
+        </div>
+        <div class="chat-archive-row">
+          <div class="chat-archive-label" id="chatArchivedLabel">Archived messages (0)</div>
+          <button class="chat-archive-action" type="button" id="chatToggleArchivedBtn">View all</button>
+        </div>
+        <div id="chatConversations" class="chat-conversations"></div>
+      </aside>
+      <section class="chat-thread-pane">
+        <div class="chat-thread-head">
+          <div class="chat-thread-left">
+            <button class="btn small" type="button" id="chatBackBtn">←</button>
+            <div class="chat-thread-avatar" id="chatThreadAvatar">C</div>
+            <div>
+              <div id="chatThreadTitle" class="chat-thread-title">Select a conversation</div>
+              <div id="chatThreadMeta" class="small-muted"></div>
+            </div>
+          </div>
+          <button class="btn small" type="button" id="chatThreadMenuBtn">⋯</button>
+        </div>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-composer">
+          <div class="chat-composer-wrap">
+            <textarea class="input" id="chatComposerInput" placeholder="Write your message..." rows="2"></textarea>
+            <button class="chat-send-arrow" type="button" id="chatSendBtn" aria-label="Send message">➤</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+  const initialTaskWorkspaceMode = "{{ workspace_mode or 'create' }}";
+  const assignedScope = document.getElementById("assignedScope");
+  const assignTargetLabel = document.getElementById("assignTargetLabel");
+  const assignUsersControls = document.getElementById("assignUsersControls");
+  const assignTeamControls = document.getElementById("assignTeamControls");
+  const assignedTeamSelect = document.getElementById("assignedTeamSelect");
+  const assignedUsersMulti = document.getElementById("assignedUsersMulti");
+  const assignedUsersSearch = document.getElementById("assignedUsersSearch");
+  const selectAllAssignedUsersBtn = document.getElementById("selectAllAssignedUsersBtn");
+  const clearAssignedUsersBtn = document.getElementById("clearAssignedUsersBtn");
+  const assignedUsersList = document.getElementById("assignedUsersList");
+  const assignedUsersHidden = document.getElementById("assignedUsersHidden");
+  const selectedAssignedUsers = new Map();
+
+  function reorderAssignedUserOptions() {
+    if (!assignedUsersMulti) return;
+    const options = Array.from(assignedUsersMulti.querySelectorAll("[data-user-id]"));
+    const selected = options.filter((option) => option.classList.contains("is-selected"));
+    const unselected = options.filter((option) => !option.classList.contains("is-selected"));
+    [...selected, ...unselected].forEach((option) => assignedUsersMulti.appendChild(option));
+  }
+
+  function filterAssignedUserOptions() {
+    if (!assignedUsersMulti) return;
+    const query = String(assignedUsersSearch?.value || "").trim().toLowerCase();
+    Array.from(assignedUsersMulti.querySelectorAll("[data-user-id]")).forEach((option) => {
+      const label = String(option.getAttribute("data-user-label") || "").toLowerCase();
+      option.style.display = !query || label.includes(query) ? "" : "none";
+    });
+  }
+
+  function renderAssignedUsers() {
+    if (!assignedUsersList || !assignedUsersHidden) return;
+    assignedUsersList.innerHTML = "";
+    assignedUsersHidden.innerHTML = "";
+    reorderAssignedUserOptions();
+    filterAssignedUserOptions();
+    selectedAssignedUsers.forEach((label, id) => {
+      const hidden = document.createElement("input");
+      hidden.type = "hidden";
+      hidden.name = "assigned_user_ids";
+      hidden.value = String(id);
+      assignedUsersHidden.appendChild(hidden);
+    });
+  }
+
+  function syncAssignedUsersFromMultiSelect() {
+    if (!assignedUsersMulti) return;
+    selectedAssignedUsers.clear();
+    Array.from(assignedUsersMulti.querySelectorAll("[data-user-id].is-selected")).forEach((option) => {
+      const id = String(option.getAttribute("data-user-id") || "").trim();
+      if (!id) return;
+      selectedAssignedUsers.set(id, option.getAttribute("data-user-label") || option.textContent || id);
+    });
+    renderAssignedUsers();
+  }
+
+  assignedUsersMulti?.addEventListener("click", (e) => {
+    const target = e.target.closest("[data-user-id]");
+    if (!target) return;
+    e.preventDefault();
+    const next = !target.classList.contains("is-selected");
+    target.classList.toggle("is-selected", next);
+    target.setAttribute("aria-pressed", next ? "true" : "false");
+    syncAssignedUsersFromMultiSelect();
+  });
+  assignedUsersSearch?.addEventListener("input", filterAssignedUserOptions);
+  selectAllAssignedUsersBtn?.addEventListener("click", () => {
+    if (!assignedUsersMulti) return;
+    Array.from(assignedUsersMulti.querySelectorAll("[data-user-id]")).forEach((option) => {
+      if (option.style.display === "none") return;
+      option.classList.add("is-selected");
+      option.setAttribute("aria-pressed", "true");
+    });
+    syncAssignedUsersFromMultiSelect();
+  });
+  clearAssignedUsersBtn?.addEventListener("click", () => {
+    if (!assignedUsersMulti) return;
+    Array.from(assignedUsersMulti.querySelectorAll("[data-user-id]")).forEach((option) => {
+      option.classList.remove("is-selected");
+      option.setAttribute("aria-pressed", "false");
+    });
+    syncAssignedUsersFromMultiSelect();
+  });
+  assignedUsersList?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-remove-user]");
+    if (!btn) return;
+    const id = btn.getAttribute("data-remove-user");
+    if (!id) return;
+    selectedAssignedUsers.delete(id);
+    if (assignedUsersMulti) {
+      const option = assignedUsersMulti.querySelector(`[data-user-id="${CSS.escape(String(id))}"]`);
+      if (option) {
+        option.classList.remove("is-selected");
+        option.setAttribute("aria-pressed", "false");
+      }
+    }
+    renderAssignedUsers();
+  });
+  function syncScope() {
+    if (!assignedScope) return;
+    const isTeam = assignedScope.value === "team";
+    if (assignTargetLabel) assignTargetLabel.textContent = isTeam ? "Assign Team" : "Assign Users";
+    if (assignUsersControls) assignUsersControls.style.display = isTeam ? "none" : "";
+    if (assignTeamControls) assignTeamControls.style.display = isTeam ? "" : "none";
+    if (assignedUsersMulti) {
+      assignedUsersMulti.setAttribute("aria-disabled", isTeam ? "true" : "false");
+      assignedUsersMulti.classList.toggle("is-disabled", isTeam);
+    }
+    if (selectAllAssignedUsersBtn) selectAllAssignedUsersBtn.disabled = isTeam;
+    if (clearAssignedUsersBtn) clearAssignedUsersBtn.disabled = isTeam;
+    if (assignedTeamSelect) {
+      assignedTeamSelect.disabled = !isTeam;
+      assignedTeamSelect.required = isTeam;
+    }
+    if (isTeam && selectedAssignedUsers.size > 0) {
+      selectedAssignedUsers.clear();
+      if (assignedUsersMulti) {
+        Array.from(assignedUsersMulti.querySelectorAll("[data-user-id]")).forEach((option) => {
+          option.classList.remove("is-selected");
+          option.setAttribute("aria-pressed", "false");
+        });
+      }
+      renderAssignedUsers();
+    }
+  }
+  assignedScope?.addEventListener("change", syncScope);
+  syncScope();
+
+  const repeatEnabled = document.getElementById("repeatEnabled");
+  const repeatType = document.getElementById("repeatType");
+  function syncRepeat() {
+    const on = repeatEnabled && repeatEnabled.checked;
+    if (repeatType) repeatType.disabled = !on;
+  }
+  repeatEnabled?.addEventListener("change", syncRepeat);
+  repeatType?.addEventListener("change", syncRepeat);
+  syncRepeat();
+
+  const taskTitleSelect = document.getElementById("taskTitleSelect");
+  const customTaskTitleWrap = document.getElementById("customTaskTitleWrap");
+  const customTaskTitleInput = document.getElementById("customTaskTitleInput");
+  const idealValueLabel = document.getElementById("idealValueLabel");
+  const idealValueInput = document.getElementById("idealValueInput");
+  const imageUploadCountField = document.getElementById("imageUploadCountField");
+  const imageUploadCountSelect = document.getElementById("imageUploadCountSelect");
+  function syncTaskTitle() {
+    const selectedTitle = taskTitleSelect ? taskTitleSelect.value : "";
+    const isCustom = selectedTitle === "Custom";
+    const isOdometer = selectedTitle === "Odometer Reading";
+    if (customTaskTitleWrap) customTaskTitleWrap.style.display = isCustom ? "" : "none";
+    if (customTaskTitleInput) customTaskTitleInput.required = !!isCustom;
+    if (idealValueLabel) idealValueLabel.textContent = isOdometer ? "Average KMPL" : "Ideal Value (max)";
+    if (idealValueInput) idealValueInput.placeholder = isOdometer ? "e.g. 5.5" : "e.g. 2.0 for earthing";
+    if (imageUploadCountField) imageUploadCountField.style.display = isOdometer ? "none" : "";
+    if (imageUploadCountSelect && isOdometer) imageUploadCountSelect.value = "1";
+  }
+  taskTitleSelect?.addEventListener("change", syncTaskTitle);
+  syncTaskTitle();
+
+  const createTaskPanel = document.getElementById("createTaskPanel");
+  const assignedTasksPanel = document.getElementById("assignedTasksPanel");
+  const showCreateTaskPanelBtn = document.getElementById("showCreateTaskPanelBtn");
+  const showAssignedTasksPanelBtn = document.getElementById("showAssignedTasksPanelBtn");
+
+  function showTaskWorkspace(mode) {
+    const showCreate = mode !== "assigned";
+    if (createTaskPanel) createTaskPanel.style.display = showCreate ? "" : "none";
+    if (assignedTasksPanel) assignedTasksPanel.style.display = showCreate ? "none" : "";
+    if (showCreateTaskPanelBtn) {
+      showCreateTaskPanelBtn.classList.toggle("is-active", showCreate);
+      showCreateTaskPanelBtn.setAttribute("aria-selected", showCreate ? "true" : "false");
+    }
+    if (showAssignedTasksPanelBtn) {
+      showAssignedTasksPanelBtn.classList.toggle("is-active", !showCreate);
+      showAssignedTasksPanelBtn.setAttribute("aria-selected", !showCreate ? "true" : "false");
+    }
+  }
+
+  showCreateTaskPanelBtn?.addEventListener("click", () => showTaskWorkspace("create"));
+  showAssignedTasksPanelBtn?.addEventListener("click", () => showTaskWorkspace("assigned"));
+  showTaskWorkspace(initialTaskWorkspaceMode);
+
+  const editTaskModal = document.getElementById("editTaskModal");
+  const editTaskForm = document.getElementById("editTaskForm");
+  const editTaskMetaLine = document.getElementById("editTaskMetaLine");
+  const editTaskCloseBtn = document.getElementById("editTaskCloseBtn");
+  const editTaskCancelBtn = document.getElementById("editTaskCancelBtn");
+  const editTaskDeleteBtn = document.getElementById("editTaskDeleteBtn");
+  const editAssignedScope = document.getElementById("editAssignedScope");
+  const editAssignTargetLabel = document.getElementById("editAssignTargetLabel");
+  const editAssignUsersControls = document.getElementById("editAssignUsersControls");
+  const editAssignTeamControls = document.getElementById("editAssignTeamControls");
+  const editAssignedTeamSelect = document.getElementById("editAssignedTeamSelect");
+  const editAssignedUsersMulti = document.getElementById("editAssignedUsersMulti");
+  const editAssignedUsersSearch = document.getElementById("editAssignedUsersSearch");
+  const editAssignedUsersHidden = document.getElementById("editAssignedUsersHidden");
+  const editSelectAllAssignedUsersBtn = document.getElementById("editSelectAllAssignedUsersBtn");
+  const editClearAssignedUsersBtn = document.getElementById("editClearAssignedUsersBtn");
+  const editDeadlineDate = document.getElementById("editDeadlineDate");
+  const editDeadlineTime = document.getElementById("editDeadlineTime");
+  const editRepeatEnabled = document.getElementById("editRepeatEnabled");
+  const editRepeatType = document.getElementById("editRepeatType");
+  const selectedEditAssignedUsers = new Map();
+  let currentEditFormId = null;
+
+  function renderEditAssignedUsers() {
+    if (!editAssignedUsersHidden) return;
+    editAssignedUsersHidden.innerHTML = "";
+    selectedEditAssignedUsers.forEach((_label, id) => {
+      const hidden = document.createElement("input");
+      hidden.type = "hidden";
+      hidden.name = "assigned_user_ids";
+      hidden.value = String(id);
+      editAssignedUsersHidden.appendChild(hidden);
+    });
+  }
+
+  function syncEditAssignedUsersFromMultiSelect() {
+    if (!editAssignedUsersMulti) return;
+    selectedEditAssignedUsers.clear();
+    Array.from(editAssignedUsersMulti.querySelectorAll("[data-user-id].is-selected")).forEach((option) => {
+      const id = String(option.getAttribute("data-user-id") || "").trim();
+      if (!id) return;
+      selectedEditAssignedUsers.set(id, option.getAttribute("data-user-label") || option.textContent || id);
+    });
+    renderEditAssignedUsers();
+  }
+
+  function filterEditAssignedUserOptions() {
+    if (!editAssignedUsersMulti) return;
+    const query = String(editAssignedUsersSearch?.value || "").trim().toLowerCase();
+    Array.from(editAssignedUsersMulti.querySelectorAll("[data-user-id]")).forEach((option) => {
+      const label = String(option.getAttribute("data-user-label") || "").toLowerCase();
+      option.style.display = !query || label.includes(query) ? "" : "none";
+    });
+  }
+
+  function syncEditScope() {
+    if (!editAssignedScope) return;
+    const isTeam = editAssignedScope.value === "team";
+    if (editAssignTargetLabel) editAssignTargetLabel.textContent = isTeam ? "Assign Team" : "Assign Users";
+    if (editAssignUsersControls) editAssignUsersControls.style.display = isTeam ? "none" : "";
+    if (editAssignTeamControls) editAssignTeamControls.style.display = isTeam ? "" : "none";
+    if (editAssignedTeamSelect) {
+      editAssignedTeamSelect.disabled = !isTeam;
+      editAssignedTeamSelect.required = isTeam;
+    }
+    if (editAssignedUsersMulti) {
+      editAssignedUsersMulti.setAttribute("aria-disabled", isTeam ? "true" : "false");
+      editAssignedUsersMulti.classList.toggle("is-disabled", isTeam);
+    }
+    if (editSelectAllAssignedUsersBtn) editSelectAllAssignedUsersBtn.disabled = isTeam;
+    if (editClearAssignedUsersBtn) editClearAssignedUsersBtn.disabled = isTeam;
+  }
+
+  function syncEditRepeat() {
+    const on = editRepeatEnabled && editRepeatEnabled.checked;
+    if (editRepeatType) editRepeatType.disabled = !on;
+  }
+
+  function openEditTaskModal(button) {
+    if (!editTaskModal || !editTaskForm) return;
+    const formId = button.getAttribute("data-form-id");
+    currentEditFormId = formId;
+    editTaskForm.action = `/tasks/forms/${formId}/update`;
+    if (editTaskMetaLine) {
+      editTaskMetaLine.textContent = `${button.getAttribute("data-title") || "Task"} • Form ${formId}`;
+    }
+    if (editAssignedScope) editAssignedScope.value = button.getAttribute("data-scope") || "users";
+    if (editAssignedTeamSelect) editAssignedTeamSelect.value = button.getAttribute("data-assigned-team") || "";
+    if (editDeadlineDate) editDeadlineDate.value = button.getAttribute("data-deadline-date") || "";
+    if (editDeadlineTime) editDeadlineTime.value = button.getAttribute("data-deadline-time") || "";
+    if (editRepeatEnabled) editRepeatEnabled.checked = button.getAttribute("data-repeat-enabled") === "1";
+    if (editRepeatType) editRepeatType.value = button.getAttribute("data-repeat-type") || "daily";
+
+    if (editAssignedUsersMulti) {
+      const selectedIds = new Set(String(button.getAttribute("data-assigned-users") || "").split(",").map((x) => x.trim()).filter(Boolean));
+      Array.from(editAssignedUsersMulti.querySelectorAll("[data-user-id]")).forEach((option) => {
+        const isSelected = selectedIds.has(String(option.getAttribute("data-user-id") || "").trim());
+        option.classList.toggle("is-selected", isSelected);
+        option.setAttribute("aria-pressed", isSelected ? "true" : "false");
+      });
+    }
+    syncEditAssignedUsersFromMultiSelect();
+    syncEditScope();
+    syncEditRepeat();
+    filterEditAssignedUserOptions();
+    editTaskModal.style.display = "flex";
+    editTaskModal.setAttribute("aria-hidden", "false");
+  }
+
+  function closeEditTaskModal() {
+    if (!editTaskModal) return;
+    editTaskModal.style.display = "none";
+    editTaskModal.setAttribute("aria-hidden", "true");
+  }
+
+  document.querySelectorAll("[data-edit-task]").forEach((button) => {
+    button.addEventListener("click", () => openEditTaskModal(button));
+  });
+  editAssignedUsersMulti?.addEventListener("click", (e) => {
+    const target = e.target.closest("[data-user-id]");
+    if (!target) return;
+    e.preventDefault();
+    const next = !target.classList.contains("is-selected");
+    target.classList.toggle("is-selected", next);
+    target.setAttribute("aria-pressed", next ? "true" : "false");
+    syncEditAssignedUsersFromMultiSelect();
+  });
+  editAssignedUsersSearch?.addEventListener("input", filterEditAssignedUserOptions);
+  editSelectAllAssignedUsersBtn?.addEventListener("click", () => {
+    if (!editAssignedUsersMulti) return;
+    Array.from(editAssignedUsersMulti.querySelectorAll("[data-user-id]")).forEach((option) => {
+      if (option.style.display === "none") return;
+      option.classList.add("is-selected");
+      option.setAttribute("aria-pressed", "true");
+    });
+    syncEditAssignedUsersFromMultiSelect();
+  });
+  editClearAssignedUsersBtn?.addEventListener("click", () => {
+    if (!editAssignedUsersMulti) return;
+    Array.from(editAssignedUsersMulti.querySelectorAll("[data-user-id]")).forEach((option) => {
+      option.classList.remove("is-selected");
+      option.setAttribute("aria-pressed", "false");
+    });
+    syncEditAssignedUsersFromMultiSelect();
+  });
+  editAssignedScope?.addEventListener("change", syncEditScope);
+  editRepeatEnabled?.addEventListener("change", syncEditRepeat);
+  editRepeatType?.addEventListener("change", syncEditRepeat);
+  editTaskCloseBtn?.addEventListener("click", closeEditTaskModal);
+  editTaskCancelBtn?.addEventListener("click", closeEditTaskModal);
+  editTaskDeleteBtn?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    if (!currentEditFormId) return;
+    const confirmed = confirm("Remove this task form? Existing task instances and submissions will be kept, but this form will be removed from your manage list and won't create new repeats. This action cannot be undone.");
+    if (!confirmed) return;
+    
+    try {
+      const csrfToken = document.querySelector("input[name='csrf_token']")?.value || "";
+      const response = await fetch(`/tasks/forms/${currentEditFormId}/delete`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: `csrf_token=${encodeURIComponent(csrfToken)}`,
+      });
+      
+      if (response.ok) {
+        window.location.href = "/tasks?workspace=modify";
+      } else {
+        let message = "Failed to remove task. Please try again.";
+        try {
+          const payload = await response.json();
+          if (payload?.error) message = payload.error;
+        } catch (error) {
+          console.warn("Could not parse delete error response", error);
+        }
+        alert(message);
+      }
+    } catch (error) {
+      console.error("Error deleting task:", error);
+      alert("An error occurred while removing the task.");
+    }
+  });
+  editTaskModal?.addEventListener("click", (e) => {
+    if (e.target === editTaskModal) closeEditTaskModal();
+  });
+
+</script>
+</body>
+</html>
