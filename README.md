@@ -24,6 +24,11 @@
 
    uvicorn server.app:app --host 0.0.0.0 --port 8000
 
+## Ubuntu Scripts
+- First-time setup + run: `./ubuntu_setup_and_run.sh`
+- Run after setup: `./run_project_ubuntu.sh`
+- The Ubuntu run script checks OS, virtualenv, `tesseract`, required Python packages, and required model files before starting `uvicorn`.
+
 ## Recommended Security Env Vars
 - `SESSION_SECRET_KEY`: set a long random secret for signed session cookies
 - `SESSION_COOKIE_HTTPS_ONLY=1`: enable when the site is served behind HTTPS

@@ -59,37 +59,16 @@ pip install --no-cache-dir \
   pillow
 
 echo
-echo "[4/5] Applying Ubuntu compatibility fix for pytesseract path"
-TESSERACT_BIN="$(command -v tesseract)"
+echo "[4/5] Verifying tesseract"
+TESSERACT_BIN="$(command -v tesseract || true)"
 if [ -z "$TESSERACT_BIN" ]; then
   echo "tesseract was not found after installation."
   exit 1
 fi
-
-sudo mkdir -p /opt/homebrew/bin
-sudo ln -sf "$TESSERACT_BIN" /opt/homebrew/bin/tesseract
+echo "tesseract: $TESSERACT_BIN"
 
 mkdir -p "$RUNTIME_DIR/ultralytics" "$RUNTIME_DIR/matplotlib"
 
-export OCR_BACKEND="${OCR_BACKEND:-gcv_then_tesseract}"
-export HOST="${HOST:-0.0.0.0}"
-export PORT="${PORT:-8000}"
-export UVICORN_RELOAD="${UVICORN_RELOAD:-0}"
-export RUN_STARTUP_HEALTHCHECKS="${RUN_STARTUP_HEALTHCHECKS:-0}"
-export WATCHFILES_FORCE_POLLING="${WATCHFILES_FORCE_POLLING:-1}"
-export YOLO_CONFIG_DIR="${YOLO_CONFIG_DIR:-$RUNTIME_DIR/ultralytics}"
-export MPLCONFIGDIR="${MPLCONFIGDIR:-$RUNTIME_DIR/matplotlib}"
-
-if [ -f "$PROJECT_DIR/.env" ]; then
-  echo
-  echo "Loading .env"
-  set -a
-  # shellcheck disable=SC1091
-  source "$PROJECT_DIR/.env"
-  set +a
-fi
-
 echo
-echo "[5/5] Starting server"
-echo "URL: http://localhost:$PORT"
-exec uvicorn server.app:app --host "$HOST" --port "$PORT"
+echo "[5/5] Handing off to Ubuntu run script"
+exec "$PROJECT_DIR/run_project_ubuntu.sh"

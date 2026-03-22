@@ -6,6 +6,7 @@ import sys
 import time
 import base64
 import json
+import shutil
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -60,9 +61,27 @@ DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
 _yolo = None
 _fire_point_yolo = None
-# Homebrew path on Apple Silicon (Tesseract)
-if pytesseract is not None:
+
+
+def _configure_tesseract_cmd() -> None:
+    if pytesseract is None:
+        return
+
+    explicit = (os.getenv("TESSERACT_CMD", "") or "").strip()
+    if explicit:
+        pytesseract.pytesseract.tesseract_cmd = explicit
+        return
+
+    detected = shutil.which("tesseract")
+    if detected:
+        pytesseract.pytesseract.tesseract_cmd = detected
+        return
+
+    # Fallback for older macOS setups that installed via Homebrew.
     pytesseract.pytesseract.tesseract_cmd = "/opt/homebrew/bin/tesseract"
+
+
+_configure_tesseract_cmd()
 
 
 def _get_pytesseract():
