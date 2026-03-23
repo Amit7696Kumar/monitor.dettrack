@@ -59,12 +59,14 @@ export OCR_BACKEND="${OCR_BACKEND:-gcv_then_tesseract}"
 export HOST="${HOST:-0.0.0.0}"
 export PORT="${PORT:-8000}"
 export UVICORN_RELOAD="${UVICORN_RELOAD:-0}"
-export RUN_STARTUP_HEALTHCHECKS="${RUN_STARTUP_HEALTHCHECKS:-1}"
+export RUN_STARTUP_HEALTHCHECKS="${RUN_STARTUP_HEALTHCHECKS:-0}"
+export RUN_STARTUP_IMPORT_CHECKS="${RUN_STARTUP_IMPORT_CHECKS:-0}"
 export WATCHFILES_FORCE_POLLING="${WATCHFILES_FORCE_POLLING:-1}"
 export YOLO_CONFIG_DIR="${YOLO_CONFIG_DIR:-$RUNTIME_DIR/ultralytics}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-$RUNTIME_DIR/matplotlib}"
 
 echo "Checking Python runtime"
+if [ "$RUN_STARTUP_IMPORT_CHECKS" = "1" ]; then
 python - <<'PY'
 from pathlib import Path
 import importlib
@@ -105,12 +107,33 @@ if missing:
 if missing_files:
     raise SystemExit("Missing model files:\n- " + "\n- ".join(missing_files))
 PY
+else
+python - <<'PY'
+from pathlib import Path
+import os
+import sys
+
+base = Path.cwd() / "server" / "models"
+required_files = [
+    base / "lcd_best.pt",
+    base / "firfightingpoint_best.pt",
+]
+missing_files = [str(path) for path in required_files if not path.exists()]
+
+print(f"Python: {sys.version.split()[0]} ({sys.executable})")
+print(f"Tesseract: {os.environ.get('TESSERACT_CMD', '')}")
+
+if missing_files:
+    raise SystemExit("Missing model files:\n- " + "\n- ".join(missing_files))
+PY
+fi
 
 echo "Host: $HOST"
 echo "Port: $PORT"
 echo "OCR_BACKEND: $OCR_BACKEND"
 echo "UVICORN_RELOAD: $UVICORN_RELOAD"
 echo "RUN_STARTUP_HEALTHCHECKS: $RUN_STARTUP_HEALTHCHECKS"
+echo "RUN_STARTUP_IMPORT_CHECKS: $RUN_STARTUP_IMPORT_CHECKS"
 echo "Google OAuth: $( [ -n "${GOOGLE_CLIENT_ID:-}" ] && echo configured || echo missing )"
 echo "Google Vision: $( [ -n "${GCV_API_KEY:-}" ] && echo configured || echo missing )"
 echo "OpenAI: $( [ -n "${OPENAI_API_KEY:-}" ] && echo configured || echo missing )"

@@ -158,7 +158,20 @@
     {
       "id": "karo_heater",
       "priority": 70,
-      "match_any": ["karo heater"],
+      "match_any": [
+        "karo heater",
+        "karoheater",
+        "kero heater",
+        "keroheater",
+        "keeoheater",
+        "keeoheaters",
+        "kero heaters",
+        "bhukhari",
+        "bukhari",
+        "bukhaari",
+        "bhukhari photos bhejiye",
+        "update your karo heater off time"
+      ],
       "task_kind": "heater_flame_check",
       "mode_hint": "label",
       "expected_output_type": "label",
@@ -166,11 +179,12 @@
       "allowed_labels": ["ON", "OFF"],
       "requires_ai": true,
       "inspection_points": [
-        "Check if flame is visible in the heater",
-        "Return ON if flame is visible, otherwise OFF"
+        "Check whether a flame or fire is visibly coming from the kero heater or bhukhari",
+        "Return ON only if a visible flame, burner fire, or combustion glow is present in the heater",
+        "Return OFF if no visible flame or fire is coming from the heater"
       ],
       "alert_on_values": ["ON"],
-      "alert_message": "Task alert: Karo Heater is ON for task '{title}'."
+      "alert_message": "Task alert: Kero heater is ON for task '{title}'."
     },
     {
       "id": "timestamp_value",

@@ -88,7 +88,7 @@ Rules:
 - If this is a numeric reading task, extract one best numeric reading only when the relevant meter/display/gauge is clearly visible and readable.
 - If this is an area-maintenance task, mark the area bad when you see over hanging cables, messy layout, clutter, or poor cleanliness.
 - If this is a fire-equipment serviceability task, mark it unserviceable unless the image clearly shows the extinguisher working/spraying.
-- If this is a heater task, return ON only when a flame is visible and OFF when no flame is visible.
+- If this is a heater task, inspect the heater itself and return ON only when visible flame, fire, or burner glow is coming from the heater; return OFF when no visible flame/fire is coming from the heater.
 - If the image does not contain the required object, meter, display, or evidence for the task, return null values instead of guessing.
 - Never extract a numeric value from unrelated background text, labels, timestamps, posters, or other non-task content.
 - If this is a socket plug / proper connection / compliance check, return value as exactly "Correct" or "Incorrect".
