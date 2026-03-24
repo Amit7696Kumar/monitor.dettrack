@@ -2176,6 +2176,25 @@ pre{
   padding-top:14px;
   border-top:1px solid #e2e8f0;
 }
+.task-form-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.task-remove-form{
+  margin:0;
+}
+.task-remove-btn{
+  background:#dc2626;
+  border-color:#dc2626;
+  color:#fff;
+}
+.task-remove-btn:hover{
+  background:#b91c1c;
+  border-color:#b91c1c;
+  color:#fff;
+}
 @media (max-width: 1080px){
   .tasks-hero{
     grid-template-columns:1fr;

@@ -134,6 +134,9 @@
   {% if error %}
   <div class="toast error" style="margin-bottom:12px;">Task action failed: {{ error }}</div>
   {% endif %}
+  {% if success %}
+  <div class="toast success" style="margin-bottom:12px;">{{ success }}</div>
+  {% endif %}
 
   {% if user.role == "user" %}
   <div class="kpi tasks-kpi">
@@ -356,23 +359,31 @@
           </div>
           <div class="task-response-block">
             {% if (f.creator_user_id or 0)|int == (user.id or 0)|int %}
-            <button
-              class="btn small"
-              type="button"
-              data-edit-task
-              data-form-id="{{ f.id }}"
-              data-title="{{ f.title|e }}"
-              data-description="{{ (f.description or '')|e }}"
-              data-scope="{{ f.assigned_scope }}"
-              data-assigned-users="{{ (f.assigned_user_ids or [])|join(',') }}"
-              data-assigned-team="{{ f.assigned_team_id or '' }}"
-              data-deadline-date="{{ f.deadline_date_value or '' }}"
-              data-deadline-time="{{ f.deadline_time_value or '' }}"
-              data-repeat-enabled="{{ 1 if f.repeat_enabled else 0 }}"
-              data-repeat-type="{{ f.repeat_type or 'daily' }}"
-            >
-              Modify Task
-            </button>
+            <div class="task-form-actions">
+              <button
+                class="btn small"
+                type="button"
+                data-edit-task
+                data-form-id="{{ f.id }}"
+                data-title="{{ f.title|e }}"
+                data-description="{{ (f.description or '')|e }}"
+                data-scope="{{ f.assigned_scope }}"
+                data-assigned-users="{{ (f.assigned_user_ids or [])|join(',') }}"
+                data-assigned-team="{{ f.assigned_team_id or '' }}"
+                data-deadline-date="{{ f.deadline_date_value or '' }}"
+                data-deadline-time="{{ f.deadline_time_value or '' }}"
+                data-repeat-enabled="{{ 1 if f.repeat_enabled else 0 }}"
+                data-repeat-type="{{ f.repeat_type or 'daily' }}"
+              >
+                Modify Task
+              </button>
+              <form method="post" action="/tasks/forms/{{ f.id }}/delete" class="task-remove-form">
+                <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+                <button class="btn small danger task-remove-btn" type="submit">
+                  Remove Task
+                </button>
+              </form>
+            </div>
             {% else %}
             <span class="small-muted">Only the creator can modify this task.</span>
             {% endif %}
@@ -479,12 +490,9 @@
               </div>
             </section>
           </div>
-          <div style="display:flex; gap:8px; justify-content:space-between;">
-            <button class="btn danger" type="button" id="editTaskDeleteBtn">Remove Task</button>
-            <div style="display:flex; gap:8px;">
-              <button class="btn" type="button" id="editTaskCancelBtn">Cancel</button>
-              <button class="btn primary" type="submit">Save Changes</button>
-            </div>
+          <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button class="btn" type="button" id="editTaskCancelBtn">Cancel</button>
+            <button class="btn primary" type="submit">Save Changes</button>
           </div>
         </form>
       </div>
@@ -816,7 +824,6 @@
   const editTaskMetaLine = document.getElementById("editTaskMetaLine");
   const editTaskCloseBtn = document.getElementById("editTaskCloseBtn");
   const editTaskCancelBtn = document.getElementById("editTaskCancelBtn");
-  const editTaskDeleteBtn = document.getElementById("editTaskDeleteBtn");
   const editAssignedScope = document.getElementById("editAssignedScope");
   const editAssignTargetLabel = document.getElementById("editAssignTargetLabel");
   const editAssignUsersControls = document.getElementById("editAssignUsersControls");
@@ -961,39 +968,6 @@
   editRepeatType?.addEventListener("change", syncEditRepeat);
   editTaskCloseBtn?.addEventListener("click", closeEditTaskModal);
   editTaskCancelBtn?.addEventListener("click", closeEditTaskModal);
-  editTaskDeleteBtn?.addEventListener("click", async (e) => {
-    e.preventDefault();
-    if (!currentEditFormId) return;
-    const confirmed = confirm("Remove this task form? Existing task instances and submissions will be kept, but this form will be removed from your manage list and won't create new repeats. This action cannot be undone.");
-    if (!confirmed) return;
-    
-    try {
-      const csrfToken = document.querySelector("input[name='csrf_token']")?.value || "";
-      const response = await fetch(`/tasks/forms/${currentEditFormId}/delete`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: `csrf_token=${encodeURIComponent(csrfToken)}`,
-      });
-      
-      if (response.ok) {
-        window.location.href = "/tasks?workspace=modify";
-      } else {
-        let message = "Failed to remove task. Please try again.";
-        try {
-          const payload = await response.json();
-          if (payload?.error) message = payload.error;
-        } catch (error) {
-          console.warn("Could not parse delete error response", error);
-        }
-        alert(message);
-      }
-    } catch (error) {
-      console.error("Error deleting task:", error);
-      alert("An error occurred while removing the task.");
-    }
-  });
   editTaskModal?.addEventListener("click", (e) => {
     if (e.target === editTaskModal) closeEditTaskModal();
   });

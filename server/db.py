@@ -105,8 +105,13 @@ class LoggingConnection(sqlite3.Connection):
 def _conn():
     global _db_connected_once
     try:
-        conn = sqlite3.connect(DB_PATH, factory=LoggingConnection)
+        conn = sqlite3.connect(DB_PATH, factory=LoggingConnection, timeout=30.0)
         conn.row_factory = sqlite3.Row
+        # SQLite is shared by request handlers and background scheduler threads.
+        # Use WAL plus a busy timeout so short write contention does not surface
+        # as immediate "database is locked" failures to the user.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         if not _db_connected_once:
             log_event(_db_logger, "INFO", "DB_CONNECTION_OK", "SQLite connection established", db_path=DB_PATH)
             _db_connected_once = True
@@ -2222,38 +2227,57 @@ def task_log_activity(
     actor_role: Optional[str],
     meta: Optional[Dict[str, Any]] = None,
 ):
-    conn = _conn()
-    cur = conn.cursor()
-    cur.execute("PRAGMA table_info(task_activity_log)")
-    cols = {row[1] for row in cur.fetchall()}
-    insert_cols: List[str] = ["action"]
-    values: List[Any] = [action]
-    if "task_instance_id" in cols:
-        insert_cols.append("task_instance_id")
-        values.append(task_instance_id)
-    if "task_id" in cols:
-        insert_cols.append("task_id")
-        values.append(task_instance_id)
-    if "actor_user_id" in cols:
-        insert_cols.append("actor_user_id")
-        values.append(actor_user_id)
-    if "actor_role" in cols:
-        insert_cols.append("actor_role")
-        values.append(actor_role)
-    meta_json = json.dumps(meta or {}, default=str) if meta is not None else None
-    if "meta_json" in cols:
-        insert_cols.append("meta_json")
-        values.append(meta_json)
-    if "details" in cols:
-        insert_cols.append("details")
-        values.append(meta_json)
-    placeholders = ",".join(["?"] * len(insert_cols))
-    cur.execute(
-        f"INSERT INTO task_activity_log({', '.join(insert_cols)}) VALUES({placeholders})",
-        tuple(values),
-    )
-    conn.commit()
-    conn.close()
+    conn = None
+    try:
+        conn = _conn()
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(task_activity_log)")
+        cols = {row[1] for row in cur.fetchall()}
+        insert_cols: List[str] = ["action"]
+        values: List[Any] = [action]
+        if "task_instance_id" in cols:
+            insert_cols.append("task_instance_id")
+            values.append(task_instance_id)
+        if "task_id" in cols:
+            insert_cols.append("task_id")
+            # Legacy databases may still require task_id as NOT NULL even for
+            # form-level events that do not target a concrete instance yet.
+            values.append(int(task_instance_id) if task_instance_id is not None else 0)
+        if "actor_user_id" in cols:
+            insert_cols.append("actor_user_id")
+            values.append(actor_user_id)
+        if "actor_role" in cols:
+            insert_cols.append("actor_role")
+            values.append(actor_role)
+        meta_json = json.dumps(meta or {}, default=str) if meta is not None else None
+        if "meta_json" in cols:
+            insert_cols.append("meta_json")
+            values.append(meta_json)
+        if "details" in cols:
+            insert_cols.append("details")
+            values.append(meta_json)
+        placeholders = ",".join(["?"] * len(insert_cols))
+        cur.execute(
+            f"INSERT INTO task_activity_log({', '.join(insert_cols)}) VALUES({placeholders})",
+            tuple(values),
+        )
+        conn.commit()
+    except Exception:
+        log_event(
+            _db_logger,
+            "ERROR",
+            "TASK_ACTIVITY_LOG_FAIL",
+            "Failed to persist task activity log",
+            exc_info=True,
+            action=action,
+            task_instance_id=task_instance_id,
+        )
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def task_upsert_question(

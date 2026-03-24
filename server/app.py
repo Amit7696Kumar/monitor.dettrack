@@ -2649,7 +2649,13 @@ def _task_status_bucket(item: Dict[str, Any], now: Optional[datetime] = None) ->
 
 
 @app.get("/tasks", response_class=HTMLResponse)
-def tasks_page(request: Request, status: str = "pending", err: Optional[str] = None, workspace: Optional[str] = None):
+def tasks_page(
+    request: Request,
+    status: str = "pending",
+    err: Optional[str] = None,
+    ok: Optional[str] = None,
+    workspace: Optional[str] = None,
+):
     u = current_user(request)
     if not require_role(u, ["user", "coadmin", "admin"]):
         return RedirectResponse("/login", status_code=303)
@@ -2706,6 +2712,7 @@ def tasks_page(request: Request, status: str = "pending", err: Optional[str] = N
             "summary": summary,
             "workspace_mode": workspace_mode,
             "error": err,
+            "success": ok,
         },
     )
 
@@ -3010,23 +3017,34 @@ async def tasks_update(
         if uid and uid not in desired_set:
             task_delete_instance(int(row["id"]))
 
-    task_log_activity(
-        task_instance_id=None,
-        action="task_form_updated",
-        actor_user_id=int(u["id"]),
-        actor_role=u["role"],
-        meta={
-            "form_id": int(form_id),
-            "assigned_scope": scope,
-            "assigned_user_ids": assignees if scope == "users" else [],
-            "assigned_team_id": assigned_team,
-            "deadline_at": deadline_iso,
-            "repeat_enabled": repeat_on,
-            "repeat_type": rep_type if repeat_on else None,
-            "repeat_interval_days": rep_days,
-        },
-    )
-    return RedirectResponse("/tasks", status_code=303)
+    try:
+        task_log_activity(
+            task_instance_id=0,
+            action="task_form_updated",
+            actor_user_id=int(u["id"]),
+            actor_role=u["role"],
+            meta={
+                "form_id": int(form_id),
+                "assigned_scope": scope,
+                "assigned_user_ids": assignees if scope == "users" else [],
+                "assigned_team_id": assigned_team,
+                "deadline_at": deadline_iso,
+                "repeat_enabled": repeat_on,
+                "repeat_type": rep_type if repeat_on else None,
+                "repeat_interval_days": rep_days,
+            },
+        )
+    except Exception:
+        log_event(
+            error_logger,
+            "ERROR",
+            "TASK_FORM_UPDATE_AUDIT_FAIL",
+            "Task form update audit logging failed",
+            exc_info=True,
+            form_id=int(form_id),
+            actor_user_id=int(u["id"]),
+        )
+    return RedirectResponse("/tasks?workspace=modify&ok=Task+modified+successfully", status_code=303)
 
 
 @app.post("/tasks/forms/{form_id}/delete")
@@ -3047,19 +3065,30 @@ async def tasks_delete(
     if int(form.get("creator_user_id") or 0) != int(u["id"]):
         return RedirectResponse("/tasks?err=task_not_found", status_code=303)
 
-    task_log_activity(
-        task_instance_id=None,
-        action="task_form_deleted",
-        actor_user_id=int(u["id"]),
-        actor_role=u["role"],
-        meta={
-            "form_id": int(form_id),
-            "form_title": form.get("title"),
-        },
-    )
+    try:
+        task_log_activity(
+            task_instance_id=0,
+            action="task_form_deleted",
+            actor_user_id=int(u["id"]),
+            actor_role=u["role"],
+            meta={
+                "form_id": int(form_id),
+                "form_title": form.get("title"),
+            },
+        )
+    except Exception:
+        log_event(
+            error_logger,
+            "ERROR",
+            "TASK_FORM_DELETE_AUDIT_FAIL",
+            "Task form delete audit logging failed",
+            exc_info=True,
+            form_id=int(form_id),
+            actor_user_id=int(u["id"]),
+        )
 
     task_delete_form(int(form_id))
-    return RedirectResponse("/tasks?workspace=modify", status_code=303)
+    return RedirectResponse("/tasks?workspace=modify&ok=Task+removed+successfully", status_code=303)
 
 
 @app.post("/tasks/{instance_id}/submit")
