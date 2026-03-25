@@ -9,6 +9,7 @@ from server.logging_utils import get_logger, log_event
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "meter.db")
 DB_SLOW_QUERY_MS = int((os.getenv("DB_SLOW_QUERY_MS", "200") or "200").strip() or 200)
+SCHEMA_USER_VERSION = 1
 _db_logger = get_logger("db")
 _db_connected_once = False
 
@@ -124,6 +125,10 @@ def _conn():
 def init_db():
     conn = _conn()
     cur = conn.cursor()
+    cur.execute("PRAGMA user_version")
+    schema_version_row = cur.fetchone()
+    schema_version = int(schema_version_row[0] or 0) if schema_version_row else 0
+    needs_legacy_migrations = schema_version < SCHEMA_USER_VERSION
 
     # Users
     cur.execute("""
@@ -136,18 +141,19 @@ def init_db():
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
     """)
-    cur.execute("PRAGMA table_info(users)")
-    user_cols = {row[1] for row in cur.fetchall()}
-    if "email" not in user_cols:
-        cur.execute("ALTER TABLE users ADD COLUMN email TEXT")
-    if "display_name" not in user_cols:
-        cur.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
-    if "google_id" not in user_cols:
-        cur.execute("ALTER TABLE users ADD COLUMN google_id TEXT")
-    if "auth_provider" not in user_cols:
-        cur.execute("ALTER TABLE users ADD COLUMN auth_provider TEXT")
-    if "force_password_change" not in user_cols:
-        cur.execute("ALTER TABLE users ADD COLUMN force_password_change INTEGER NOT NULL DEFAULT 0")
+    if needs_legacy_migrations:
+        cur.execute("PRAGMA table_info(users)")
+        user_cols = {row[1] for row in cur.fetchall()}
+        if "email" not in user_cols:
+            cur.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        if "display_name" not in user_cols:
+            cur.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
+        if "google_id" not in user_cols:
+            cur.execute("ALTER TABLE users ADD COLUMN google_id TEXT")
+        if "auth_provider" not in user_cols:
+            cur.execute("ALTER TABLE users ADD COLUMN auth_provider TEXT")
+        if "force_password_change" not in user_cols:
+            cur.execute("ALTER TABLE users ADD COLUMN force_password_change INTEGER NOT NULL DEFAULT 0")
 
     # Readings uploaded by users
     cur.execute("""
@@ -166,26 +172,27 @@ def init_db():
     )
     """)
     # Add missing columns for existing DBs
-    cur.execute("PRAGMA table_info(readings)")
-    cols = {row[1] for row in cur.fetchall()}
-    if "manual_value" not in cols:
-        cur.execute("ALTER TABLE readings ADD COLUMN manual_value TEXT")
-    if "filename_2" not in cols:
-        cur.execute("ALTER TABLE readings ADD COLUMN filename_2 TEXT")
-    if "odometer_start" not in cols:
-        cur.execute("ALTER TABLE readings ADD COLUMN odometer_start TEXT")
-    if "odometer_end" not in cols:
-        cur.execute("ALTER TABLE readings ADD COLUMN odometer_end TEXT")
-    if "distance_diff" not in cols:
-        cur.execute("ALTER TABLE readings ADD COLUMN distance_diff TEXT")
-    if "fuel_economy" not in cols:
-        cur.execute("ALTER TABLE readings ADD COLUMN fuel_economy TEXT")
-    if "fuel_consumed" not in cols:
-        cur.execute("ALTER TABLE readings ADD COLUMN fuel_consumed TEXT")
-    if "image_taken_at" not in cols:
-        cur.execute("ALTER TABLE readings ADD COLUMN image_taken_at TEXT")
-    if "image_taken_at_2" not in cols:
-        cur.execute("ALTER TABLE readings ADD COLUMN image_taken_at_2 TEXT")
+    if needs_legacy_migrations:
+        cur.execute("PRAGMA table_info(readings)")
+        cols = {row[1] for row in cur.fetchall()}
+        if "manual_value" not in cols:
+            cur.execute("ALTER TABLE readings ADD COLUMN manual_value TEXT")
+        if "filename_2" not in cols:
+            cur.execute("ALTER TABLE readings ADD COLUMN filename_2 TEXT")
+        if "odometer_start" not in cols:
+            cur.execute("ALTER TABLE readings ADD COLUMN odometer_start TEXT")
+        if "odometer_end" not in cols:
+            cur.execute("ALTER TABLE readings ADD COLUMN odometer_end TEXT")
+        if "distance_diff" not in cols:
+            cur.execute("ALTER TABLE readings ADD COLUMN distance_diff TEXT")
+        if "fuel_economy" not in cols:
+            cur.execute("ALTER TABLE readings ADD COLUMN fuel_economy TEXT")
+        if "fuel_consumed" not in cols:
+            cur.execute("ALTER TABLE readings ADD COLUMN fuel_consumed TEXT")
+        if "image_taken_at" not in cols:
+            cur.execute("ALTER TABLE readings ADD COLUMN image_taken_at TEXT")
+        if "image_taken_at_2" not in cols:
+            cur.execute("ALTER TABLE readings ADD COLUMN image_taken_at_2 TEXT")
 
     # Alerts for coadmin/admin
     cur.execute("""
@@ -422,44 +429,45 @@ def init_db():
     # Legacy compatibility: older builds may already have task_submissions with
     # columns like task_id/submitted_by/evidence_path. Add bridge columns so new
     # APIs can run without destructive migration.
-    cur.execute("PRAGMA table_info(task_submissions)")
-    sub_cols = {row[1] for row in cur.fetchall()}
-    if "task_instance_id" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN task_instance_id INTEGER")
-    if "user_id" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN user_id INTEGER")
-        if "submitted_by" in sub_cols:
-            cur.execute("UPDATE task_submissions SET user_id=submitted_by WHERE user_id IS NULL")
-    if "file_path" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN file_path TEXT")
-        if "evidence_path" in sub_cols:
-            cur.execute("UPDATE task_submissions SET file_path=evidence_path WHERE file_path IS NULL")
-    if "file_type" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN file_type TEXT")
-    if "file_size" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN file_size INTEGER")
-    if "ai_result_reference" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN ai_result_reference TEXT")
-        if "ai_result_summary" in sub_cols:
-            cur.execute("UPDATE task_submissions SET ai_result_reference=ai_result_summary WHERE ai_result_reference IS NULL")
-    if "ai_requested" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN ai_requested INTEGER NOT NULL DEFAULT 0")
-    if "ai_status" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN ai_status TEXT NOT NULL DEFAULT 'not_requested'")
-    if "submitted_value" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN submitted_value REAL")
-    if "file_path_2" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN file_path_2 TEXT")
-    if "avg_kmpl" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN avg_kmpl REAL")
-    if "distance_diff" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN distance_diff REAL")
-    if "fuel_consumed" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN fuel_consumed REAL")
-    if "image_taken_at" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN image_taken_at TEXT")
-    if "image_taken_at_2" not in sub_cols:
-        cur.execute("ALTER TABLE task_submissions ADD COLUMN image_taken_at_2 TEXT")
+    if needs_legacy_migrations:
+        cur.execute("PRAGMA table_info(task_submissions)")
+        sub_cols = {row[1] for row in cur.fetchall()}
+        if "task_instance_id" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN task_instance_id INTEGER")
+        if "user_id" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN user_id INTEGER")
+            if "submitted_by" in sub_cols:
+                cur.execute("UPDATE task_submissions SET user_id=submitted_by WHERE user_id IS NULL")
+        if "file_path" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN file_path TEXT")
+            if "evidence_path" in sub_cols:
+                cur.execute("UPDATE task_submissions SET file_path=evidence_path WHERE file_path IS NULL")
+        if "file_type" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN file_type TEXT")
+        if "file_size" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN file_size INTEGER")
+        if "ai_result_reference" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN ai_result_reference TEXT")
+            if "ai_result_summary" in sub_cols:
+                cur.execute("UPDATE task_submissions SET ai_result_reference=ai_result_summary WHERE ai_result_reference IS NULL")
+        if "ai_requested" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN ai_requested INTEGER NOT NULL DEFAULT 0")
+        if "ai_status" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN ai_status TEXT NOT NULL DEFAULT 'not_requested'")
+        if "submitted_value" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN submitted_value REAL")
+        if "file_path_2" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN file_path_2 TEXT")
+        if "avg_kmpl" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN avg_kmpl REAL")
+        if "distance_diff" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN distance_diff REAL")
+        if "fuel_consumed" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN fuel_consumed REAL")
+        if "image_taken_at" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN image_taken_at TEXT")
+        if "image_taken_at_2" not in sub_cols:
+            cur.execute("ALTER TABLE task_submissions ADD COLUMN image_taken_at_2 TEXT")
     # Ensure upsert target exists for ON CONFLICT(task_instance_id)
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_task_submissions_instance_unique ON task_submissions(task_instance_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_task_submissions_user ON task_submissions(user_id, submitted_at DESC)")
@@ -493,52 +501,54 @@ def init_db():
         FOREIGN KEY(task_instance_id) REFERENCES task_instances(id)
     )
     """)
-    cur.execute("PRAGMA table_info(task_activity_log)")
-    act_cols = {row[1] for row in cur.fetchall()}
-    if "task_instance_id" not in act_cols:
-        cur.execute("ALTER TABLE task_activity_log ADD COLUMN task_instance_id INTEGER")
-        if "task_id" in act_cols:
-            cur.execute("UPDATE task_activity_log SET task_instance_id=task_id WHERE task_instance_id IS NULL")
-    if "meta_json" not in act_cols:
-        cur.execute("ALTER TABLE task_activity_log ADD COLUMN meta_json TEXT")
-        if "details" in act_cols:
-            cur.execute(
-                """
-                UPDATE task_activity_log
-                SET meta_json=CASE
-                    WHEN details IS NULL OR details='' THEN NULL
-                    ELSE json_object('legacy_details', details)
-                END
-                WHERE meta_json IS NULL
-                """
-            )
+    if needs_legacy_migrations:
+        cur.execute("PRAGMA table_info(task_activity_log)")
+        act_cols = {row[1] for row in cur.fetchall()}
+        if "task_instance_id" not in act_cols:
+            cur.execute("ALTER TABLE task_activity_log ADD COLUMN task_instance_id INTEGER")
+            if "task_id" in act_cols:
+                cur.execute("UPDATE task_activity_log SET task_instance_id=task_id WHERE task_instance_id IS NULL")
+        if "meta_json" not in act_cols:
+            cur.execute("ALTER TABLE task_activity_log ADD COLUMN meta_json TEXT")
+            if "details" in act_cols:
+                cur.execute(
+                    """
+                    UPDATE task_activity_log
+                    SET meta_json=CASE
+                        WHEN details IS NULL OR details='' THEN NULL
+                        ELSE json_object('legacy_details', details)
+                    END
+                    WHERE meta_json IS NULL
+                    """
+                )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_task_activity_instance ON task_activity_log(task_instance_id, created_at DESC)")
 
     # Backward compatible additive columns
-    cur.execute("PRAGMA table_info(task_forms)")
-    form_cols = {row[1] for row in cur.fetchall()}
-    if "allow_resubmission" not in form_cols:
-        cur.execute("ALTER TABLE task_forms ADD COLUMN allow_resubmission INTEGER NOT NULL DEFAULT 0")
-    if "question_type" not in form_cols:
-        cur.execute("ALTER TABLE task_forms ADD COLUMN question_type TEXT NOT NULL DEFAULT 'upload'")
-    if "number_min" not in form_cols:
-        cur.execute("ALTER TABLE task_forms ADD COLUMN number_min REAL")
-    if "number_max" not in form_cols:
-        cur.execute("ALTER TABLE task_forms ADD COLUMN number_max REAL")
-    if "number_unit" not in form_cols:
-        cur.execute("ALTER TABLE task_forms ADD COLUMN number_unit TEXT")
-    if "is_required" not in form_cols:
-        cur.execute("ALTER TABLE task_forms ADD COLUMN is_required INTEGER NOT NULL DEFAULT 1")
-    if "ai_engine_type" not in form_cols:
-        cur.execute("ALTER TABLE task_forms ADD COLUMN ai_engine_type TEXT NOT NULL DEFAULT 'auto'")
-    if "extraction_hints" not in form_cols:
-        cur.execute("ALTER TABLE task_forms ADD COLUMN extraction_hints TEXT")
-    if "threshold_rules_json" not in form_cols:
-        cur.execute("ALTER TABLE task_forms ADD COLUMN threshold_rules_json TEXT")
-    if "image_upload_count" not in form_cols:
-        cur.execute("ALTER TABLE task_forms ADD COLUMN image_upload_count INTEGER NOT NULL DEFAULT 1")
-    if "is_deleted" not in form_cols:
-        cur.execute("ALTER TABLE task_forms ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0")
+    if needs_legacy_migrations:
+        cur.execute("PRAGMA table_info(task_forms)")
+        form_cols = {row[1] for row in cur.fetchall()}
+        if "allow_resubmission" not in form_cols:
+            cur.execute("ALTER TABLE task_forms ADD COLUMN allow_resubmission INTEGER NOT NULL DEFAULT 0")
+        if "question_type" not in form_cols:
+            cur.execute("ALTER TABLE task_forms ADD COLUMN question_type TEXT NOT NULL DEFAULT 'upload'")
+        if "number_min" not in form_cols:
+            cur.execute("ALTER TABLE task_forms ADD COLUMN number_min REAL")
+        if "number_max" not in form_cols:
+            cur.execute("ALTER TABLE task_forms ADD COLUMN number_max REAL")
+        if "number_unit" not in form_cols:
+            cur.execute("ALTER TABLE task_forms ADD COLUMN number_unit TEXT")
+        if "is_required" not in form_cols:
+            cur.execute("ALTER TABLE task_forms ADD COLUMN is_required INTEGER NOT NULL DEFAULT 1")
+        if "ai_engine_type" not in form_cols:
+            cur.execute("ALTER TABLE task_forms ADD COLUMN ai_engine_type TEXT NOT NULL DEFAULT 'auto'")
+        if "extraction_hints" not in form_cols:
+            cur.execute("ALTER TABLE task_forms ADD COLUMN extraction_hints TEXT")
+        if "threshold_rules_json" not in form_cols:
+            cur.execute("ALTER TABLE task_forms ADD COLUMN threshold_rules_json TEXT")
+        if "image_upload_count" not in form_cols:
+            cur.execute("ALTER TABLE task_forms ADD COLUMN image_upload_count INTEGER NOT NULL DEFAULT 1")
+        if "is_deleted" not in form_cols:
+            cur.execute("ALTER TABLE task_forms ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0")
 
     # AI result storage
     cur.execute("""
@@ -560,6 +570,7 @@ def init_db():
     """)
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_task_ai_results_instance ON task_ai_results(task_instance_id)")
 
+    cur.execute(f"PRAGMA user_version={SCHEMA_USER_VERSION}")
     conn.commit()
     conn.close()
 
@@ -592,6 +603,19 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     row = cur.fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def get_users_by_usernames(usernames: List[str]) -> Dict[str, Dict[str, Any]]:
+    cleaned = [str(name).strip() for name in (usernames or []) if str(name).strip()]
+    if not cleaned:
+        return {}
+    placeholders = ",".join(["?"] * len(cleaned))
+    conn = _conn()
+    cur = conn.cursor()
+    cur.execute(f"SELECT * FROM users WHERE username IN ({placeholders})", tuple(cleaned))
+    rows = cur.fetchall()
+    conn.close()
+    return {str(row["username"]): dict(row) for row in rows}
 
 
 def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:

@@ -52,10 +52,10 @@ source "$VENV_DIR/bin/activate"
 
 check_command python "Python is unavailable inside the virtual environment."
 check_command uvicorn "uvicorn is unavailable inside the virtual environment. Reinstall Python dependencies."
-check_command tesseract "tesseract is not installed. Run: sudo apt-get install -y tesseract-ocr"
 
-export TESSERACT_CMD="${TESSERACT_CMD:-$(command -v tesseract)}"
-export OCR_BACKEND="${OCR_BACKEND:-gcv_then_tesseract}"
+TESSERACT_BIN="$(command -v tesseract || true)"
+export TESSERACT_CMD="${TESSERACT_CMD:-$TESSERACT_BIN}"
+export OCR_BACKEND="${OCR_BACKEND:-gcv}"
 export HOST="${HOST:-0.0.0.0}"
 export PORT="${PORT:-8000}"
 export UVICORN_RELOAD="${UVICORN_RELOAD:-0}"
@@ -80,7 +80,6 @@ required_modules = [
     "multipart",
     "numpy",
     "cv2",
-    "pytesseract",
     "ultralytics",
     "openai",
 ]
@@ -100,7 +99,7 @@ required_files = [
 missing_files = [str(path) for path in required_files if not path.exists()]
 
 print(f"Python: {sys.version.split()[0]} ({sys.executable})")
-print(f"Tesseract: {os.environ.get('TESSERACT_CMD', '')}")
+print(f"Tesseract: {os.environ.get('TESSERACT_CMD', '') or 'optional / not found'}")
 
 if missing:
     raise SystemExit("Missing Python dependencies:\n- " + "\n- ".join(missing))
@@ -121,7 +120,7 @@ required_files = [
 missing_files = [str(path) for path in required_files if not path.exists()]
 
 print(f"Python: {sys.version.split()[0]} ({sys.executable})")
-print(f"Tesseract: {os.environ.get('TESSERACT_CMD', '')}")
+print(f"Tesseract: {os.environ.get('TESSERACT_CMD', '') or 'optional / not found'}")
 
 if missing_files:
     raise SystemExit("Missing model files:\n- " + "\n- ".join(missing_files))

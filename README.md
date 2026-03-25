@@ -27,7 +27,7 @@
 ## Ubuntu Scripts
 - First-time setup + run: `./ubuntu_setup_and_run.sh`
 - Run after setup: `./run_project_ubuntu.sh`
-- The Ubuntu run script checks OS, virtualenv, `tesseract`, required Python packages, and required model files before starting `uvicorn`.
+- The Ubuntu run script checks OS, virtualenv, required Python packages, and required model files before starting `uvicorn`.
 
 ## Recommended Security Env Vars
 - `SESSION_SECRET_KEY`: set a long random secret for signed session cookies
@@ -40,9 +40,9 @@
 - Configure Google Vision API key:
   - `export GCV_API_KEY=your_google_vision_api_key`
 - OCR backend mode:
-  - `export OCR_BACKEND=gcv_then_tesseract` (default, GCV first then local fallback)
-  - `export OCR_BACKEND=gcv` (GCV only)
-  - `export OCR_BACKEND=tesseract` (local only)
+  - `export OCR_BACKEND=gcv` (default, GCV only)
+  - `export OCR_BACKEND=gcv_then_tesseract` (optional, GCV first then local fallback)
+  - `export OCR_BACKEND=tesseract` (optional, local only)
 
 ## URLs
 - User upload page: http://localhost:8000/

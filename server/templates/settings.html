@@ -57,14 +57,14 @@
       <form method="post" action="/team-members/assign" class="stack">
         <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
         <label class="stack">
-          <span class="small-muted">Unassigned User</span>
-          <select class="input" name="user_id" required {% if not unassigned_users %}disabled{% endif %}>
-            <option value="">Select user</option>
+          <span class="small-muted">Unassigned Users</span>
+          <select class="input" name="user_id" multiple size="{{ 8 if (unassigned_users|length) > 8 else (unassigned_users|length if unassigned_users else 4) }}" required {% if not unassigned_users %}disabled{% endif %}>
             {% for u in unassigned_users %}
               {% set user_label = (u.display_name or '').strip() or ((u.email or '').split('@')[0] if u.email else '') or ((u.username or '').split('@')[0] if '@' in (u.username or '') else (u.username or '')) %}
-              <option value="{{ u.id }}">{{ user_label }}</option>
+              <option value="{{ u.id }}">{{ user_label }}{% if u.username %} (@{{ u.username }}){% endif %}</option>
             {% endfor %}
           </select>
+          <div class="small-muted">Hold Command on Mac or Ctrl on Windows/Linux to select multiple users.</div>
         </label>
 
         {% if user.role == "admin" %}
@@ -83,7 +83,7 @@
         {% endif %}
 
         <div class="actions">
-          <button class="btn primary" type="submit" {% if not unassigned_users %}disabled{% endif %}>Add Member</button>
+          <button class="btn primary" type="submit" {% if not unassigned_users %}disabled{% endif %}>Add Members</button>
         </div>
       </form>
       {% if not unassigned_users %}

@@ -16,11 +16,6 @@ from typing import Any, Dict, List, Optional, Tuple
 cv2 = None
 import numpy as np
 
-try:
-    import pytesseract
-except Exception:
-    pytesseract = None
-
 # DO NOT import ultralytics / torch at top-level.
 # Must be lazy-loaded inside functions to prevent server import crash/hang.
 
@@ -61,33 +56,42 @@ DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
 _yolo = None
 _fire_point_yolo = None
+_pytesseract = None
+_pytesseract_error: Optional[Exception] = None
 
 
-def _configure_tesseract_cmd() -> None:
-    if pytesseract is None:
+def _configure_tesseract_cmd(pt) -> None:
+    if pt is None:
         return
 
     explicit = (os.getenv("TESSERACT_CMD", "") or "").strip()
     if explicit:
-        pytesseract.pytesseract.tesseract_cmd = explicit
+        pt.pytesseract.tesseract_cmd = explicit
         return
 
     detected = shutil.which("tesseract")
     if detected:
-        pytesseract.pytesseract.tesseract_cmd = detected
+        pt.pytesseract.tesseract_cmd = detected
         return
 
     # Fallback for older macOS setups that installed via Homebrew.
-    pytesseract.pytesseract.tesseract_cmd = "/opt/homebrew/bin/tesseract"
-
-
-_configure_tesseract_cmd()
+    pt.pytesseract.tesseract_cmd = "/opt/homebrew/bin/tesseract"
 
 
 def _get_pytesseract():
-    if pytesseract is None:
-        raise RuntimeError("pytesseract is not installed")
-    return pytesseract
+    global _pytesseract, _pytesseract_error
+    if _pytesseract is not None:
+        return _pytesseract
+    if _pytesseract_error is not None:
+        raise RuntimeError(f"pytesseract is unavailable: {_pytesseract_error}")
+    try:
+        import pytesseract as pt
+    except Exception as exc:
+        _pytesseract_error = exc
+        raise RuntimeError(f"pytesseract is unavailable: {exc}") from exc
+    _configure_tesseract_cmd(pt)
+    _pytesseract = pt
+    return _pytesseract
 
 
 def _clean_digits(s: str) -> str:
@@ -136,8 +140,8 @@ def _best_number_from_text(text: str) -> Optional[str]:
 
 
 def _ocr_backend_mode() -> str:
-    # gcv_then_tesseract (default), gcv, tesseract
-    return (os.getenv("OCR_BACKEND", "gcv_then_tesseract") or "").strip().lower()
+    # gcv (default), gcv_then_tesseract, tesseract
+    return (os.getenv("OCR_BACKEND", "gcv") or "").strip().lower()
 
 
 def _get_gcv_api_key() -> str:
@@ -1027,8 +1031,10 @@ def run_ocr(image_path: str, debug_id: Optional[str] = None, meter_type: Optiona
                     "debug": {"provider": "google_vision", "meter_detected": True, "yolo_conf": yconf, "ocr_conf": 0.0, "error": str(e)},
                 }
 
-    if pytesseract is None:
-        log("[OCR][Tesseract] pytesseract unavailable; skipping local OCR")
+    try:
+        _get_pytesseract()
+    except Exception as e:
+        log(f"[OCR][Tesseract] pytesseract unavailable; skipping local OCR: {e}")
         return {
             "numeric": None,
             "text": "",
@@ -1036,7 +1042,7 @@ def run_ocr(image_path: str, debug_id: Optional[str] = None, meter_type: Optiona
             "used_crop": True,
             "crop_box": [x0, y0, x1 - x0, y1 - y0],
             "debug_urls": debug_urls,
-            "debug": {"meter_detected": True, "yolo_conf": yconf, "ocr_conf": 0.0, "error": "pytesseract not installed"},
+            "debug": {"meter_detected": True, "yolo_conf": yconf, "ocr_conf": 0.0, "error": str(e)},
         }
 
     variants = build_variants(crop)

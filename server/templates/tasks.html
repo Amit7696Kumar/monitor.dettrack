@@ -526,38 +526,62 @@
               {% elif t.status in ["submitted", "late", "completed"] %}
                 <span class="small-muted">Already submitted</span>
               {% else %}
-                <form method="post" action="/tasks/{{ t.id }}/submit" enctype="multipart/form-data" class="stack">
+                <form method="post" action="/tasks/{{ t.id }}/submit" enctype="multipart/form-data" class="stack" data-task-submit-form data-task-kind="{{ t.task_kind or '' }}" data-camera-only="{{ 1 if t.camera_only_upload else 0 }}" data-odometer-metadata="{{ 1 if t.odometer_metadata_required else 0 }}">
                   <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
                   {% if (t.title or '')|lower == 'odometer reading' %}
                   <label class="field">
                     <span>Start Image</span>
-                    <input class="input" type="file" name="response_file_start" accept=".jpg,.jpeg,.png,.webp" required>
+                    <input class="input" type="file" name="response_file_start" accept="image/*,.jpg,.jpeg,.png,.webp" required data-media-input>
+                    <input type="hidden" name="media_source_start" value="camera">
                   </label>
                   <label class="field">
                     <span>End Image</span>
-                    <input class="input" type="file" name="response_file_end" accept=".jpg,.jpeg,.png,.webp" required>
+                    <input class="input" type="file" name="response_file_end" accept="image/*,.jpg,.jpeg,.png,.webp" required data-media-input>
+                    <input type="hidden" name="media_source_end" value="camera">
                   </label>
+                  <div class="small-muted">Capture odometer photos today. Older photos or photos without valid capture metadata will be rejected.</div>
                   <label class="field">
                     <span>Average KMPL</span>
                     <input class="input" type="text" value="{{ t.number_max if t.number_max is not none else '-' }}" readonly>
                   </label>
                   {% else %}
                   <label class="field">
-                    <span>Upload File 1</span>
-                    <input class="input" type="file" name="response_file" {% if t.question_type != "number" %}required{% endif %}>
+                    <span>{% if "video" in (t.allowed_types or []) and "photo" not in (t.allowed_types or []) %}Record Video{% else %}Capture Photo{% endif %}</span>
+                    <input class="input" type="file" name="response_file" {% if t.question_type != "number" %}required{% endif %}
+                      {% if "video" in (t.allowed_types or []) and "photo" not in (t.allowed_types or []) %}
+                      accept="video/*" capture="environment"
+                      {% elif "photo" in (t.allowed_types or []) and "video" not in (t.allowed_types or []) %}
+                      accept="image/*" capture="environment"
+                      {% elif "photo" in (t.allowed_types or []) or "video" in (t.allowed_types or []) %}
+                      accept="image/*,video/*" capture="environment"
+                      {% endif %}
+                      data-media-input>
+                    <input type="hidden" name="media_source" value="{% if t.camera_only_upload %}camera{% else %}upload{% endif %}">
                   </label>
                   {% if (t.image_upload_count or 1)|int >= 2 %}
                   <label class="field">
-                    <span>Upload File 2</span>
-                    <input class="input" type="file" name="response_file_2" required>
+                    <span>{% if "video" in (t.allowed_types or []) and "photo" not in (t.allowed_types or []) %}Record Video 2{% else %}Capture Photo 2{% endif %}</span>
+                    <input class="input" type="file" name="response_file_2" required
+                      {% if "video" in (t.allowed_types or []) and "photo" not in (t.allowed_types or []) %}
+                      accept="video/*" capture="environment"
+                      {% elif "photo" in (t.allowed_types or []) and "video" not in (t.allowed_types or []) %}
+                      accept="image/*" capture="environment"
+                      {% elif "photo" in (t.allowed_types or []) or "video" in (t.allowed_types or []) %}
+                      accept="image/*,video/*" capture="environment"
+                      {% endif %}
+                      data-media-input>
+                    <input type="hidden" name="media_source_2" value="{% if t.camera_only_upload %}camera{% else %}upload{% endif %}">
                   </label>
+                  {% endif %}
+                  {% if t.camera_only_upload %}
+                  <div class="small-muted">Only live capture is allowed for this task.</div>
                   {% endif %}
                   {% endif %}
                   {% if t.question_type in ["number", "upload_number"] %}
                   <input class="input" type="number" step="any" name="entered_number" placeholder="Enter numeric response{% if t.number_unit %} ({{ t.number_unit }}){% endif %}" {% if t.question_type == "number" %}required{% endif %}>
                   {% endif %}
                   <input class="input" name="remarks" placeholder="Remarks (optional)">
-                  <button class="btn small primary" type="submit">Submit</button>
+                  <button class="btn small primary" type="submit" data-submit-btn data-submit-label="Submit">Submit</button>
                 </form>
               {% endif %}
             {% else %}
@@ -970,6 +994,44 @@
   editTaskCancelBtn?.addEventListener("click", closeEditTaskModal);
   editTaskModal?.addEventListener("click", (e) => {
     if (e.target === editTaskModal) closeEditTaskModal();
+  });
+
+  document.querySelectorAll("[data-task-submit-form]").forEach((form) => {
+    const mediaInputs = Array.from(form.querySelectorAll("[data-media-input]"));
+    mediaInputs.forEach((input) => {
+      input.addEventListener("dragover", (event) => event.preventDefault());
+      input.addEventListener("drop", (event) => event.preventDefault());
+      input.addEventListener("change", () => {
+        const sourceField = form.querySelector(`input[name="${input.name.replace("response_file", "media_source")}"]`);
+        if (sourceField) sourceField.value = "camera";
+      });
+    });
+
+    form.addEventListener("submit", (event) => {
+      const requiresToday = form.getAttribute("data-odometer-metadata") === "1";
+      if (!requiresToday) return;
+      const today = new Date();
+      const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+      for (const input of mediaInputs) {
+        const file = input.files && input.files[0];
+        if (!file || !file.lastModified) continue;
+        const captured = new Date(file.lastModified);
+        const capturedKey = `${captured.getFullYear()}-${String(captured.getMonth() + 1).padStart(2, "0")}-${String(captured.getDate()).padStart(2, "0")}`;
+        if (capturedKey !== todayKey) {
+          event.preventDefault();
+          window.alert("Odometer photo must be captured today. Older photos are not allowed.");
+          return;
+        }
+      }
+    });
+
+    form.addEventListener("submit", (event) => {
+      if (event.defaultPrevented) return;
+      const submitBtn = form.querySelector("[data-submit-btn]");
+      if (!submitBtn) return;
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Uploading...";
+    });
   });
 
 </script>

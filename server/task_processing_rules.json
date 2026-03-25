@@ -116,6 +116,77 @@
       "alert_message": "Task alert: Fire fighting equipment is unserviceable for task '{title}'. Findings: {evidence}"
     },
     {
+      "id": "voltage_reading",
+      "priority": 35,
+      "match_any": ["voltage reading", "voltage", "volt meter", "voltmeter"],
+      "task_kind": "voltage",
+      "mode_hint": "numeric_strict",
+      "expected_output_type": "number",
+      "expected_object": "digital voltage meter display",
+      "allow_local_ocr_fallback": false,
+      "require_object_presence_for_value": true,
+      "alert_when_required_object_missing": true,
+      "requires_ai": true,
+      "unit": "V",
+      "value_format": {
+        "type": "decimal_number",
+        "allow_negative": false,
+        "allow_units_in_value": false,
+        "min": 0,
+        "max": 500,
+        "decimal_places_max": 2
+      },
+      "reading_rules": {
+        "source_of_truth": "meter_display_only",
+        "read_only_visible_lcd_digits": true,
+        "reject_if_display_not_clear": true,
+        "reject_if_digits_partially_hidden": true,
+        "reject_if_display_has_glare_or_blur": true,
+        "reject_if_multiple_possible_values": true,
+        "do_not_infer_or_guess_missing_digits": true,
+        "ignore_body_text_labels": true,
+        "ignore_timestamp_overlay": true,
+        "ignore_brand_name": true,
+        "ignore_background_objects": true,
+        "extract_single_most_prominent_display_value": true
+      },
+      "inspection_points": [
+        "Locate the voltage meter or voltmeter in the image.",
+        "Confirm the display is clearly visible and readable.",
+        "Read only the numeric value shown on the meter display.",
+        "Do not use printed labels, meter body text, timestamps, or background numbers.",
+        "If the display is unclear, obstructed, reflective, blurred, or ambiguous, return no value instead of guessing."
+      ],
+      "ai_extraction_contract": {
+        "must_return": {
+          "value": "number|null",
+          "unit": "V",
+          "object_present": "boolean",
+          "display_visible": "boolean",
+          "confidence": "number",
+          "raw_display_text": "string",
+          "reason_if_null": "string"
+        },
+        "accept_if": {
+          "object_present": true,
+          "display_visible": true,
+          "confidence_gte": 0.95
+        },
+        "otherwise_return_null": true
+      },
+      "validation_rules": [
+        {
+          "type": "require_decimal_or_integer_pattern",
+          "pattern": "^[0-9]+(\\.[0-9]{1,2})?$"
+        }
+      ],
+      "alert_threshold": {
+        "operator": "lt",
+        "value": 11.5,
+        "message": "Task alert: Voltage value {value} V is below 11.5 V for task '{title}'."
+      }
+    },
+    {
       "id": "odometer_reading",
       "priority": 40,
       "match_any": ["odometer reading", "odometer"],

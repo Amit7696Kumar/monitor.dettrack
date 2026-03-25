@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_DIR="$PROJECT_DIR/.venv"
+VENV_DIR="${VENV_DIR:-$PROJECT_DIR/.venv}"
 ENV_FILE="$PROJECT_DIR/.env"
 RUNTIME_DIR="$PROJECT_DIR/.runtime"
 
@@ -22,8 +22,21 @@ if [ ! -d "$VENV_DIR" ]; then
   exit 1
 fi
 
+PYTHON_BIN=""
+for candidate in "$VENV_DIR/bin/python" "$VENV_DIR/bin/python3" "$VENV_DIR/bin/python3.11" "$VENV_DIR/bin/python3.9"; do
+  if [ -x "$candidate" ]; then
+    PYTHON_BIN="$candidate"
+    break
+  fi
+done
+
+if [ -z "$PYTHON_BIN" ]; then
+  echo "No Python interpreter found in $VENV_DIR/bin"
+  exit 1
+fi
+
 # Keep defaults predictable if they are not set in .env.
-export OCR_BACKEND="${OCR_BACKEND:-gcv_then_tesseract}"
+export OCR_BACKEND="${OCR_BACKEND:-gcv}"
 export HOST="${HOST:-0.0.0.0}"
 export PORT="${PORT:-8000}"
 export UVICORN_RELOAD="${UVICORN_RELOAD:-0}"
@@ -32,10 +45,10 @@ export WATCHFILES_FORCE_POLLING="${WATCHFILES_FORCE_POLLING:-1}"
 export YOLO_CONFIG_DIR="${YOLO_CONFIG_DIR:-$RUNTIME_DIR/ultralytics}"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-$RUNTIME_DIR/matplotlib}"
 
-source "$VENV_DIR/bin/activate"
-
 echo "Starting DET Monitoring"
 echo "Project: $PROJECT_DIR"
+echo "Venv: $VENV_DIR"
+echo "Python: $PYTHON_BIN"
 echo "Host: $HOST"
 echo "Port: $PORT"
 echo "OCR_BACKEND: $OCR_BACKEND"
@@ -63,7 +76,7 @@ fi
 
 if [ "$RUN_STARTUP_HEALTHCHECKS" = "1" ]; then
 echo "Running YOLO health check"
-python - <<'PY'
+"$PYTHON_BIN" - <<'PY'
 import os
 from pathlib import Path
 
@@ -99,7 +112,7 @@ else
 fi
 
 if [ "$UVICORN_RELOAD" = "1" ]; then
-  exec uvicorn server.app:app --reload --reload-dir "$PROJECT_DIR/server" --host "$HOST" --port "$PORT"
+  exec "$PYTHON_BIN" -m uvicorn server.app:app --reload --reload-dir "$PROJECT_DIR/server" --host "$HOST" --port "$PORT"
 else
-  exec uvicorn server.app:app --host "$HOST" --port "$PORT"
+  exec "$PYTHON_BIN" -m uvicorn server.app:app --host "$HOST" --port "$PORT"
 fi

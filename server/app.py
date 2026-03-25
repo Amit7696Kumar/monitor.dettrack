@@ -34,6 +34,7 @@ from server.db import (
     init_db,
     create_user,
     get_user_by_username,
+    get_users_by_usernames,
     get_user_by_id,
     get_user_by_email,
     get_user_by_google_id,
@@ -124,6 +125,14 @@ from server.services.readings_view import (
     augment_readings_for_view,
     filter_dashboard_readings_scope,
 )
+from server.services.task_media_policy import (
+    MediaUploadEvidence,
+    build_task_media_policy,
+    extract_image_capture_datetime,
+    format_capture_datetime,
+    normalize_media_source,
+    validate_task_media_uploads,
+)
 
 
 def _load_local_env_files() -> None:
@@ -149,29 +158,10 @@ def _load_local_env_files() -> None:
             continue
 
 
-def _normalize_image_taken_at(raw: Any) -> Optional[str]:
-    text = str(raw or "").strip()
-    if not text:
-        return None
-    for fmt in ("%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y:%m:%d %H:%M:%S%z", "%Y-%m-%dT%H:%M:%S"):
-        try:
-            dt = datetime.strptime(text, fmt)
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            continue
-    return text
-
-
 def _extract_image_taken_at(image_path: str) -> Optional[str]:
     try:
-        with Image.open(image_path) as img:
-            exif = img.getexif()
-            if not exif:
-                return None
-            for tag_id in (36867, 36868, 306):
-                normalized = _normalize_image_taken_at(exif.get(tag_id))
-                if normalized:
-                    return normalized
+        with open(image_path, "rb") as fh:
+            return format_capture_datetime(extract_image_capture_datetime(fh.read()))
     except Exception:
         return None
     return None
@@ -973,6 +963,79 @@ def _task_parse_json_list(raw: Optional[str]) -> List[Any]:
         return []
 
 
+def _task_redirect_error(message: str, *, workspace: Optional[str] = None, status: Optional[str] = None) -> RedirectResponse:
+    params: List[str] = [f"err={urllib.parse.quote_plus(message)}"]
+    if workspace:
+        params.append(f"workspace={urllib.parse.quote_plus(workspace)}")
+    if status:
+        params.append(f"status={urllib.parse.quote_plus(status)}")
+    return RedirectResponse(f"/tasks?{'&'.join(params)}", status_code=303)
+
+
+def _task_upload_media_policy(item: Dict[str, Any], task_spec: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    spec = task_spec or _task_build_spec(item)
+    allowed_types = [x for x in _task_parse_json_list(item.get("allowed_types_json")) if x in TASK_ALLOWED_TYPES]
+    return build_task_media_policy(task_kind=str(spec.get("task_kind") or ""), allowed_types=allowed_types)
+
+
+def _task_send_media_policy_alert(
+    *,
+    user_obj: Dict[str, Any],
+    instance: Dict[str, Any],
+    message: str,
+    severity: str = "high",
+):
+    team_id = _user_team_int(user_obj) or _user_team_int(instance)
+    if team_id is not None:
+        create_alert(
+            reading_id=0,
+            target_role="coadmin",
+            target_team=int(team_id),
+            message=message,
+            severity=severity,
+        )
+        task_create_notification(
+            task_instance_id=int(instance.get("id") or 0),
+            recipient_role="coadmin",
+            recipient_user_id=None,
+            recipient_team=int(team_id),
+            alert_type="media_policy_violation",
+            message=message,
+        )
+    create_alert(
+        reading_id=0,
+        target_role="admin",
+        target_team=None,
+        message=message,
+        severity=severity,
+    )
+    task_create_notification(
+        task_instance_id=int(instance.get("id") or 0),
+        recipient_role="admin",
+        recipient_user_id=None,
+        recipient_team=None,
+        alert_type="media_policy_violation",
+        message=message,
+    )
+
+
+def _task_log_media_policy_event(
+    *,
+    instance_id: int,
+    actor_user_id: int,
+    actor_role: str,
+    action: str,
+    meta: Dict[str, Any],
+):
+    task_log_activity(
+        task_instance_id=instance_id,
+        action=action,
+        actor_user_id=actor_user_id,
+        actor_role=actor_role,
+        meta=meta,
+    )
+
+
 async def _task_process_ai(
     instance: Dict[str, Any],
     upload_full_path: str,
@@ -1004,60 +1067,6 @@ async def _task_process_ai(
             local_confidence = 0.0
             local_missing_required_object = False
 
-            if is_earthing_task:
-                debug_id = uuid.uuid4().hex
-                ocr = await run_in_threadpool(run_ocr, upload_full_path, debug_id, meter_hint)
-                extracted_text = str(ocr.get("text") or "").strip()
-                ocr_debug = (ocr.get("debug") or {}) if isinstance(ocr, dict) else {}
-                meter_detected = bool(ocr_debug.get("meter_detected"))
-                num = (ocr.get("numeric") or {}) if isinstance(ocr, dict) else {}
-                try:
-                    local_confidence = float(num.get("confidence") or 0.0)
-                except Exception:
-                    local_confidence = 0.0
-
-                if not meter_detected:
-                    local_missing_required_object = True
-                    validation_status = "missing_required_object"
-                    validation_reason = "No meter detected in image. Expected earthing meter display."
-                    engine_used = "local_meter_guard"
-
-                if isinstance(num, dict) and num.get("value") not in {None, ""}:
-                    ocr_validation = _task_validate_ai_result(
-                        spec,
-                        {
-                            "relevant": True,
-                            "readable": True,
-                            "value": num.get("value"),
-                            "present": True,
-                            "confidence": num.get("confidence") or 0.0,
-                            "summary": extracted_text,
-                            "evidence": extracted_text,
-                        },
-                    )
-                    validation_status = str(ocr_validation.get("status") or "failed")
-                    validation_reason = str(ocr_validation.get("reason") or "")
-                    if ocr_validation.get("accepted"):
-                        value = ocr_validation.get("value")
-                        engine_used = "local_meter_ocr"
-                        return {
-                            "status": "completed",
-                            "summary": f"AI ({engine_used}) completed; value={value}",
-                            "extracted_text": extracted_text,
-                            "extracted_values": {"value": value},
-                            "engine_used": engine_used,
-                            "local_result": ocr,
-                            "openai_result": None,
-                            "task_spec": spec,
-                            "validation_status": validation_status,
-                            "validation_reason": validation_reason,
-                            "confidence": local_confidence,
-                        }
-
-                if meter_detected:
-                    validation_status = "unreadable"
-                    validation_reason = "Earthing meter detected but the display value could not be read clearly."
-
             if openai_available():
                 try:
                     openai_payload = await run_in_threadpool(
@@ -1065,7 +1074,7 @@ async def _task_process_ai(
                         image_path=upload_full_path,
                         task_title=str(instance.get("title") or ""),
                         task_description=str(instance.get("description") or ""),
-                        local_result=ocr if is_earthing_task else {},
+                        local_result={},
                         task_spec=spec,
                         mode_hint=mode_hint,
                     )
@@ -1112,6 +1121,12 @@ async def _task_process_ai(
                 ocr = await run_in_threadpool(run_ocr, upload_full_path, debug_id, meter_hint)
                 engine_used = "local_fallback"
                 if isinstance(ocr, dict):
+                    ocr_debug = (ocr.get("debug") or {}) if isinstance(ocr, dict) else {}
+                    meter_detected = bool(ocr_debug.get("meter_detected"))
+                    if is_earthing_task and not meter_detected:
+                        local_missing_required_object = True
+                        validation_status = "missing_required_object"
+                        validation_reason = "No meter detected in image. Expected earthing meter display."
                     num = (ocr.get("numeric") or {})
                     if isinstance(num, dict):
                         ocr_validation = _task_validate_ai_result(
@@ -1134,6 +1149,9 @@ async def _task_process_ai(
                             local_confidence = float(num.get("confidence") or 0.0)
                         except Exception:
                             local_confidence = 0.0
+                    if is_earthing_task and meter_detected and value in {None, ""}:
+                        validation_status = "unreadable"
+                        validation_reason = "Earthing meter detected but the display value could not be read clearly."
                     extracted_text = extracted_text or (ocr.get("text") or "").strip()
 
             if should_skip_local_fallback and value in {None, ""}:
@@ -1469,6 +1487,33 @@ def _task_missing_object_alert_reason(
     return reason or f"Task alert: No meter detected in image for task '{title}', so no value was recorded."
 
 
+def _task_pick_effective_ai_payload(
+    instance: Dict[str, Any],
+    spec: Dict[str, Any],
+    payloads: List[Optional[Dict[str, Any]]],
+) -> Optional[Dict[str, Any]]:
+    candidates = [payload for payload in payloads if isinstance(payload, dict)]
+    if not candidates:
+        return None
+
+    def _candidate_value(payload: Dict[str, Any]) -> Any:
+        return ((payload.get("extracted_values") or {}).get("value"))
+
+    for payload in candidates:
+        value = _candidate_value(payload)
+        if _task_semantic_alert_reason(instance, value, spec, payload):
+            return payload
+        if _task_missing_object_alert_reason(instance, spec, payload):
+            return payload
+
+    for payload in candidates:
+        value = _candidate_value(payload)
+        if value not in {None, ""}:
+            return payload
+
+    return candidates[0]
+
+
 def _task_numeric_from_ocr(ocr_payload: Optional[Dict[str, Any]]) -> Optional[float]:
     if not isinstance(ocr_payload, dict):
         return None
@@ -1776,6 +1821,7 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 @app.on_event("startup")
 def startup():
+    startup_started = time.perf_counter()
     init_db()
     log_event(system_logger, "INFO", "SYSTEM_STARTUP", "Application startup initialized")
     if SESSION_SECRET_KEY == "CHANGE_ME_TO_A_RANDOM_LONG_SECRET":
@@ -1808,25 +1854,33 @@ def startup():
     else:
         log_event(jobs_logger, "INFO", "OCR_WARMUP_SKIPPED", "OCR warmup skipped; set ENABLE_OCR_WARMUP=1 to enable")
 
-    # create users...
-    if not get_user_by_username("admin"):
-        create_user("admin", hash_password("admin123"), "admin", None, force_password_change=True)
-        log_event(auth_logger, "INFO", "USER_REGISTER_SUCCESS", "Bootstrap admin account created", username="admin", role="admin")
+    bootstrap_specs = [("admin", "admin123", "admin", None)]
+    bootstrap_specs.extend((f"coadmin{t}", "coadmin123", "coadmin", t) for t in range(1, 7))
+    bootstrap_names = [name for name, _pwd, _role, _team in bootstrap_specs]
+    existing_users = get_users_by_usernames(bootstrap_names)
 
-    for t in range(1, 7):
-        uname = f"coadmin{t}"
-        if not get_user_by_username(uname):
-            create_user(uname, hash_password("coadmin123"), "coadmin", t, force_password_change=True)
-            log_event(auth_logger, "INFO", "USER_REGISTER_SUCCESS", "Bootstrap coadmin account created", username=uname, role="coadmin", team=t)
+    for uname, default_password, role, team in bootstrap_specs:
+        if uname in existing_users:
+            continue
+        create_user(uname, hash_password(default_password), role, team, force_password_change=True)
+        log_event(
+            auth_logger,
+            "INFO",
+            "USER_REGISTER_SUCCESS",
+            "Bootstrap account created",
+            username=uname,
+            role=role,
+            team=team,
+        )
 
-    bootstrap_users = [("admin", "admin123")]
-    bootstrap_users.extend((f"coadmin{t}", "coadmin123") for t in range(1, 7))
-    for uname, default_password in bootstrap_users:
-        existing = get_user_by_username(uname)
+    existing_users = get_users_by_usernames(bootstrap_names)
+    for uname, default_password, _role, _team in bootstrap_specs:
+        existing = existing_users.get(uname)
         if existing and verify_password(default_password, str(existing.get("password_hash") or "")):
             set_user_force_password_change(int(existing["id"]), True)
 
-    log_event(system_logger, "INFO", "SYSTEM_READY", "Application startup completed", url="http://127.0.0.1:8000/login")
+    startup_ms = round((time.perf_counter() - startup_started) * 1000.0, 2)
+    log_event(system_logger, "INFO", "SYSTEM_READY", "Application startup completed", url="http://127.0.0.1:8000/login", startup_ms=startup_ms)
     if _env_flag("ENABLE_TASK_SCHEDULER", default=True):
         def _task_loop():
             log_event(jobs_logger, "INFO", "TASK_SCHEDULER_START", "Task scheduler started")
@@ -1836,7 +1890,7 @@ def startup():
                 except Exception:
                     log_event(error_logger, "ERROR", "TASK_SCHEDULER_FAIL", "Task scheduler cycle failed", exc_info=True)
                 time.sleep(60)
-        threading.Thread(target=_task_loop, daemon=True).start()
+        threading.Timer(0.5, lambda: threading.Thread(target=_task_loop, daemon=True).start()).start()
 
 # -----------------------
 # Auth
@@ -2688,6 +2742,14 @@ def tasks_page(
     now = datetime.now()
     status_filter = status if status in {"submitted", "pending", "overdue"} else "pending"
     for item in all_items:
+        allowed_types = [x for x in _task_parse_json_list(item.get("allowed_types_json")) if x in TASK_ALLOWED_TYPES]
+        item["allowed_types"] = allowed_types
+        item_spec = _task_build_spec(item)
+        media_policy = _task_upload_media_policy(item, item_spec)
+        item["task_kind"] = item_spec.get("task_kind")
+        item["media_policy_name"] = media_policy.get("policy_name")
+        item["camera_only_upload"] = bool(media_policy.get("camera_only"))
+        item["odometer_metadata_required"] = bool(media_policy.get("metadata_required"))
         item["status_bucket"] = _task_status_bucket(item, now)
     items = [x for x in all_items if x.get("status_bucket") == status_filter]
     now_iso = now.isoformat()
@@ -3097,6 +3159,10 @@ async def tasks_submit(
     instance_id: int,
     remarks: Optional[str] = Form(None),
     entered_number: Optional[str] = Form(None),
+    media_source: Optional[str] = Form(None),
+    media_source_2: Optional[str] = Form(None),
+    media_source_start: Optional[str] = Form(None),
+    media_source_end: Optional[str] = Form(None),
     response_file: Optional[UploadFile] = File(None),
     response_file_2: Optional[UploadFile] = File(None),
     response_file_start: Optional[UploadFile] = File(None),
@@ -3169,6 +3235,7 @@ async def tasks_submit(
     is_unsupported_task = task_kind == "unsupported_notice"
     fire_point_present: Optional[bool] = None
     fire_point_value: Optional[str] = None
+    media_validation_uploads: List[MediaUploadEvidence] = []
 
     if is_odometer_task:
         if not response_file_start or not response_file_start.filename or not response_file_end or not response_file_end.filename:
@@ -3196,6 +3263,73 @@ async def tasks_submit(
         payload_error = _validate_upload_payload(raw1, "photo", ext1) or _validate_upload_payload(raw2, "photo", ext2)
         if payload_error:
             return _upload_error_redirect("/tasks", payload_error)
+        media_validation_uploads = [
+            MediaUploadEvidence(
+                field_name="response_file_start",
+                filename=str(response_file_start.filename or ""),
+                media_type="photo",
+                media_source=normalize_media_source(media_source_start),
+                raw_bytes=raw1,
+            ),
+            MediaUploadEvidence(
+                field_name="response_file_end",
+                filename=str(response_file_end.filename or ""),
+                media_type="photo",
+                media_source=normalize_media_source(media_source_end),
+                raw_bytes=raw2,
+            ),
+        ]
+        media_validation = validate_task_media_uploads(
+            task_kind=task_kind,
+            allowed_types=["photo"],
+            uploads=media_validation_uploads,
+            now=datetime.now(),
+        )
+        if not media_validation.get("accepted"):
+            violation = (media_validation.get("violations") or [{}])[0]
+            attempted_source = str(violation.get("source") or "unknown")
+            detected_photo_date = str(violation.get("captured_at") or media_validation.get("metadata_by_field", {}).get(violation.get("field_name") or "") or "missing")
+            today_text = datetime.now().strftime("%Y-%m-%d")
+            violation_code = str(violation.get("code") or "")
+            message = str(violation.get("message") or "Upload rejected by media policy.")
+            _task_log_media_policy_event(
+                instance_id=int(instance_id),
+                actor_user_id=int(u["id"]),
+                actor_role=u["role"],
+                action="task_media_upload_rejected",
+                meta={
+                    "reason_code": violation_code,
+                    "task_kind": task_kind,
+                    "attempted_source": attempted_source,
+                    "photo_date": detected_photo_date,
+                    "allowed_date": today_text,
+                },
+            )
+            if violation_code in {"odometer_metadata_missing", "odometer_metadata_date_mismatch"}:
+                user_name = str(u.get("display_name") or u.get("username") or u.get("id"))
+                if violation_code == "odometer_metadata_missing":
+                    alert_message = (
+                        f"Alert: User {user_name} (ID {u['id']}) attempted to upload an odometer photo without valid metadata "
+                        f"for task '{item.get('title')}'."
+                    )
+                else:
+                    alert_message = (
+                        f"Alert: User {user_name} (ID {u['id']}) attempted to upload an older odometer photo for task "
+                        f"'{item.get('title')}'. Photo metadata date: {detected_photo_date}. Allowed date: {today_text}."
+                    )
+                _task_send_media_policy_alert(user_obj=u, instance=item, message=alert_message, severity="high")
+                log_event(
+                    audit_logger,
+                    "WARN",
+                    "ODOMETER_MEDIA_POLICY_REJECTED",
+                    "Rejected odometer upload due to metadata policy",
+                    user_id=int(u["id"]),
+                    task_instance_id=int(instance_id),
+                    violation_code=violation_code,
+                    photo_date=detected_photo_date,
+                    allowed_date=today_text,
+                )
+            return _task_redirect_error(message)
         now = datetime.now()
         subdir = os.path.join(UPLOAD_DIR, "tasks", now.strftime("%Y"), now.strftime("%m"))
         os.makedirs(subdir, exist_ok=True)
@@ -3248,6 +3382,58 @@ async def tasks_submit(
             payload_error = _validate_upload_payload(raw_2, detected_type_2 or detected_type, ext_2)
             if payload_error:
                 return _upload_error_redirect("/tasks", payload_error)
+        media_validation_uploads = [
+            MediaUploadEvidence(
+                field_name="response_file",
+                filename=str(response_file.filename or ""),
+                media_type=str(detected_type or ""),
+                media_source=normalize_media_source(media_source),
+                raw_bytes=raw,
+            )
+        ]
+        if image_upload_count == 2 and response_file_2 and raw_2:
+            media_validation_uploads.append(
+                MediaUploadEvidence(
+                    field_name="response_file_2",
+                    filename=str(response_file_2.filename or ""),
+                    media_type=str(detected_type_2 or detected_type or ""),
+                    media_source=normalize_media_source(media_source_2 or media_source),
+                    raw_bytes=raw_2,
+                )
+            )
+        media_validation = validate_task_media_uploads(
+            task_kind=task_kind,
+            allowed_types=allowed_types,
+            uploads=media_validation_uploads,
+            now=datetime.now(),
+        )
+        if not media_validation.get("accepted"):
+            violation = (media_validation.get("violations") or [{}])[0]
+            message = str(violation.get("message") or "Upload rejected by media policy.")
+            _task_log_media_policy_event(
+                instance_id=int(instance_id),
+                actor_user_id=int(u["id"]),
+                actor_role=u["role"],
+                action="task_media_upload_rejected",
+                meta={
+                    "reason_code": str(violation.get("code") or ""),
+                    "task_kind": task_kind,
+                    "attempted_source": str(violation.get("source") or "unknown"),
+                    "media_type": str(violation.get("media_type") or detected_type or ""),
+                },
+            )
+            log_event(
+                audit_logger,
+                "WARN",
+                "TASK_MEDIA_POLICY_REJECTED",
+                "Rejected task media upload due to policy",
+                user_id=int(u["id"]),
+                task_instance_id=int(instance_id),
+                violation_code=str(violation.get("code") or ""),
+                media_type=str(violation.get("media_type") or detected_type or ""),
+                source=str(violation.get("source") or "unknown"),
+            )
+            return _task_redirect_error(message)
         now = datetime.now()
         subdir = os.path.join(UPLOAD_DIR, "tasks", now.strftime("%Y"), now.strftime("%m"))
         os.makedirs(subdir, exist_ok=True)
@@ -3414,9 +3600,21 @@ async def tasks_submit(
             ai_result = f"Fire-point detection failed: {e}"
     elif should_run_ai:
         ai_status = "queued"
-        ai_payload = await _task_process_ai(item, full_path, detected_type)
-        ai_status = ai_payload.get("status") or "failed"
-        ai_result = ai_payload.get("summary")
+        ai_payload_primary = await _task_process_ai(item, full_path, detected_type)
+        ai_payload_secondary = None
+        if image_upload_count == 2 and full_path_2:
+            ai_payload_secondary = await _task_process_ai(item, full_path_2, detected_type)
+        ai_payload = _task_pick_effective_ai_payload(item, task_spec, [ai_payload_primary, ai_payload_secondary]) or ai_payload_primary
+        ai_status = str((ai_payload or {}).get("status") or "failed")
+        ai_result = str((ai_payload or {}).get("summary") or "")
+        if ai_payload_secondary:
+            ai_result = (
+                f"{ai_result} | multi-image decision based on "
+                f"{'image 2' if ai_payload is ai_payload_secondary else 'image 1'}"
+            )
+            ai_payload["selected_image_index"] = 2 if ai_payload is ai_payload_secondary else 1
+            ai_payload["secondary_image_summary"] = str((ai_payload_secondary or {}).get("summary") or "")
+            ai_payload["primary_image_summary"] = str((ai_payload_primary or {}).get("summary") or "")
         extracted_raw = ((ai_payload or {}).get("extracted_values") or {}).get("value")
         if extracted_raw is not None and extracted_raw != "":
             try:
@@ -3428,6 +3626,34 @@ async def tasks_submit(
 
     if number_value is None and extracted_value is not None:
         number_value = extracted_value
+
+    if media_validation_uploads:
+        _task_log_media_policy_event(
+            instance_id=int(instance_id),
+            actor_user_id=int(u["id"]),
+            actor_role=u["role"],
+            action="task_media_upload_accepted",
+            meta={
+                "task_kind": task_kind,
+                "uploads": [
+                    {
+                        "field_name": upload.field_name,
+                        "media_type": upload.media_type,
+                        "source": upload.media_source,
+                    }
+                    for upload in media_validation_uploads
+                ],
+            },
+        )
+        log_event(
+            audit_logger,
+            "INFO",
+            "TASK_MEDIA_POLICY_ACCEPTED",
+            "Accepted task media upload after policy validation",
+            user_id=int(u["id"]),
+            task_instance_id=int(instance_id),
+            task_kind=task_kind,
+        )
 
     semantic_alert_reason = _task_semantic_alert_reason(item, number_value, task_spec, ai_payload)
     missing_object_alert_reason = _task_missing_object_alert_reason(item, task_spec, ai_payload)
@@ -3876,7 +4102,7 @@ async def team_members_add(
 @app.post("/team-members/assign")
 async def team_members_assign(
     request: Request,
-    user_id: str = Form(...),
+    user_id: List[str] = Form(...),
     team_id: Optional[str] = Form(None),
 ):
     u = current_user(request)
@@ -3884,15 +4110,11 @@ async def team_members_assign(
         return RedirectResponse("/login", status_code=303)
 
     try:
-        uid = int((user_id or "").strip())
+        user_ids = sorted({int(str(raw or "").strip()) for raw in user_id if str(raw or "").strip()})
     except Exception:
-        return _redirect_dashboard_with_message(u, err="Select a valid user.")
-
-    target_user = get_user_by_id(uid)
-    if not target_user or target_user.get("role") != "user":
-        return _redirect_dashboard_with_message(u, err="Selected user is invalid.")
-    if not _is_effectively_unassigned_user(target_user):
-        return _redirect_dashboard_with_message(u, err="Selected user is already assigned to a team.")
+        return _redirect_dashboard_with_message(u, err="Select at least one valid user.")
+    if not user_ids:
+        return _redirect_dashboard_with_message(u, err="Select at least one valid user.")
 
     if u["role"] == "admin":
         try:
@@ -3907,31 +4129,47 @@ async def team_members_assign(
             return _redirect_dashboard_with_message(u, err="Your account has no valid team.")
 
     try:
-        update_user_team(uid, assigned_team)
-        provider_now = str(target_user.get("auth_provider") or "")
-        if provider_now in {"password", "google"}:
-            update_user_identity(int(uid), auth_provider=f"{provider_now}_assigned")
-        log_event(
-            admin_logger,
-            "INFO",
-            "TEAM_MEMBER_ASSIGN",
-            "Existing user assigned to team",
-            by_user_id=int(u["id"]),
-            assigned_user_id=uid,
-            team=assigned_team,
-        )
+        assigned_usernames: List[str] = []
+        for uid in user_ids:
+            target_user = get_user_by_id(uid)
+            if not target_user or target_user.get("role") != "user":
+                return _redirect_dashboard_with_message(u, err="One or more selected users are invalid.")
+            if not _is_effectively_unassigned_user(target_user):
+                return _redirect_dashboard_with_message(u, err=f"User {target_user.get('username')} is already assigned to a team.")
+
+        for uid in user_ids:
+            target_user = get_user_by_id(uid)
+            if not target_user:
+                continue
+            update_user_team(uid, assigned_team)
+            provider_now = str(target_user.get("auth_provider") or "")
+            if provider_now in {"password", "google"}:
+                update_user_identity(int(uid), auth_provider=f"{provider_now}_assigned")
+            assigned_usernames.append(str(target_user.get("username") or uid))
+            log_event(
+                admin_logger,
+                "INFO",
+                "TEAM_MEMBER_ASSIGN",
+                "Existing user assigned to team",
+                by_user_id=int(u["id"]),
+                assigned_user_id=uid,
+                team=assigned_team,
+            )
+        summary = f"{len(assigned_usernames)} members assigned to Team {assigned_team}."
+        if len(assigned_usernames) == 1:
+            summary = f"Member {assigned_usernames[0]} assigned to Team {assigned_team}."
         return _redirect_dashboard_with_message(
             u,
-            info=f"Member {target_user.get('username')} assigned to Team {assigned_team}.",
+            info=summary,
         )
     except Exception:
         log_event(
             error_logger,
             "ERROR",
             "TEAM_MEMBER_ASSIGN_FAIL",
-            "Failed to assign existing user to team",
+            "Failed to assign existing users to team",
             exc_info=True,
-            assigned_user_id=uid,
+            assigned_user_ids=user_ids,
         )
         return _redirect_dashboard_with_message(u, err="Unable to assign member right now.")
 
