@@ -37,6 +37,26 @@ def _combine_dashboard_rows(readings: List[Dict[str, Any]], task_instances: List
     return rows
 
 
+def _row_result_alert(item: Dict[str, Any]) -> bool:
+    row_kind = str(item.get("_row_kind") or "").strip().lower()
+    if row_kind == "task":
+        if bool(item.get("alert_triggered")):
+            return True
+        return bool(str(item.get("alert_reason") or "").strip())
+    status_class = str(item.get("status_class") or "").strip().lower()
+    return status_class in {"high", "alert", "danger"}
+
+
+def _mark_result_alerts(items: List[Dict[str, Any]], row_kind: str) -> List[Dict[str, Any]]:
+    marked: List[Dict[str, Any]] = []
+    for raw in items:
+        item = dict(raw)
+        item.setdefault("_row_kind", row_kind)
+        item["_result_alert"] = _row_result_alert(item)
+        marked.append(item)
+    return marked
+
+
 def build_admin_dashboard_context(
     *,
     user: Dict[str, Any],
@@ -49,17 +69,19 @@ def build_admin_dashboard_context(
     all_users: List[Dict[str, Any]],
     teams: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
+    readings_view = _mark_result_alerts(readings, "reading")
+    task_instances_view = _mark_result_alerts(task_instances, "task")
     return {
         "user": user,
-        "readings": readings,
-        "task_instances": task_instances,
+        "readings": readings_view,
+        "task_instances": task_instances_view,
         "alerts": alerts,
         "unread_count": unread_count,
         "teams": teams if teams is not None else [1, 2, 3, 4, 5, 6],
         "latest_reading_id": latest_reading_id,
         "messages": messages,
         "all_users": all_users,
-        "dashboard_rows": _combine_dashboard_rows(readings, task_instances),
+        "dashboard_rows": _combine_dashboard_rows(readings_view, task_instances_view),
     }
 
 
@@ -75,16 +97,18 @@ def build_coadmin_dashboard_context(
     messages: List[Dict[str, Any]],
     users_team: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
+    readings_view = _mark_result_alerts(readings, "reading")
+    task_instances_view = _mark_result_alerts(task_instances, "task")
     return {
         "user": user,
         "team_id": team_id,
-        "readings": readings,
-        "task_instances": task_instances,
+        "readings": readings_view,
+        "task_instances": task_instances_view,
         "alerts": alerts,
         "unread_count": unread_count,
         "latest_reading_id": latest_reading_id,
         "messages": messages,
         "users_team": users_team,
-        "total_task_count": len(readings) + len(task_instances),
-        "dashboard_rows": _combine_dashboard_rows(readings, task_instances),
+        "total_task_count": len(readings_view) + len(task_instances_view),
+        "dashboard_rows": _combine_dashboard_rows(readings_view, task_instances_view),
     }

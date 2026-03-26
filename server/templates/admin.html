@@ -68,6 +68,25 @@
       opacity: 0.45;
       transform: translateY(4px);
     }
+    .submission-result {
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+      padding: 0;
+      border-radius: 12px;
+      font-weight: 500;
+      color: inherit;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.35;
+    }
+    .submission-result.is-alert {
+      padding: 4px 10px;
+      background: #fee2e2;
+      color: #991b1b;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body class="app-shell admin-dashboard-page">
@@ -178,7 +197,7 @@
 
       <div class="admin-mobile-readings-head">
         <h2 class="admin-mobile-section-title">All Readings</h2>
-        <p class="admin-mobile-section-subtitle">Click a value or “Open” to review details</p>
+        <p class="admin-mobile-section-subtitle">Click a result or “Open” to review details</p>
       </div>
 
       {% set use_combined_rows = dashboard_rows is defined and dashboard_rows and dashboard_rows|length > 0 %}
@@ -202,12 +221,10 @@
         >
           <div class="admin-mobile-card-main">
             <div class="admin-mobile-user">{{ row.username }}</div>
-            <div class="admin-mobile-value">{% if row.value %}{{ row.value }}{% else %}-{% endif %}</div>
-            <div class="admin-mobile-badge-wrap">
-              {% set status_text = (row.status or "OVERDUE")|upper %}
-              <span class="admin-mobile-status-badge {% if (row.status or 'overdue')|lower == 'overdue' %}is-overdue{% else %}is-default{% endif %}">
-                <span class="admin-mobile-status-dot"></span>{{ status_text }}
-              </span>
+            <div class="admin-mobile-value">
+              {% if row.value %}
+              <span class="submission-result{% if row._result_alert %} is-alert{% endif %}">{{ row.value }}</span>
+              {% else %}-{% endif %}
             </div>
           </div>
           <div class="admin-mobile-card-action">
@@ -236,16 +253,10 @@
             <div class="admin-mobile-user">{{ row.assigned_username or row.assigned_user_id }}</div>
             <div class="admin-mobile-value">
               {% if row.response_value is not none and (row.response_value|string|lower) != 'overdue' %}
-              {{ row.response_value }}
+              <span class="submission-result{% if row._result_alert %} is-alert{% endif %}">{{ row.response_value }}</span>
               {% else %}
               -
               {% endif %}
-            </div>
-            <div class="admin-mobile-badge-wrap">
-              {% set task_status_text = (row.status or "OVERDUE")|upper %}
-              <span class="admin-mobile-status-badge {% if (row.status or 'overdue')|lower == 'overdue' %}is-overdue{% else %}is-default{% endif %}">
-                <span class="admin-mobile-status-dot"></span>{{ task_status_text }}
-              </span>
             </div>
           </div>
           <div class="admin-mobile-card-action">
@@ -275,12 +286,10 @@
         >
           <div class="admin-mobile-card-main">
             <div class="admin-mobile-user">{{ row.username }}</div>
-            <div class="admin-mobile-value">{% if row.value %}{{ row.value }}{% else %}-{% endif %}</div>
-            <div class="admin-mobile-badge-wrap">
-              {% set status_text = (row.status or "OVERDUE")|upper %}
-              <span class="admin-mobile-status-badge {% if (row.status or 'overdue')|lower == 'overdue' %}is-overdue{% else %}is-default{% endif %}">
-                <span class="admin-mobile-status-dot"></span>{{ status_text }}
-              </span>
+            <div class="admin-mobile-value">
+              {% if row.value %}
+              <span class="submission-result{% if row._result_alert %} is-alert{% endif %}">{{ row.value }}</span>
+              {% else %}-{% endif %}
             </div>
           </div>
           <div class="admin-mobile-card-action">
@@ -310,16 +319,10 @@
             <div class="admin-mobile-user">{{ row.assigned_username or row.assigned_user_id }}</div>
             <div class="admin-mobile-value">
               {% if row.response_value is not none and (row.response_value|string|lower) != 'overdue' %}
-              {{ row.response_value }}
+              <span class="submission-result{% if row._result_alert %} is-alert{% endif %}">{{ row.response_value }}</span>
               {% else %}
               -
               {% endif %}
-            </div>
-            <div class="admin-mobile-badge-wrap">
-              {% set task_status_text = (row.status or "OVERDUE")|upper %}
-              <span class="admin-mobile-status-badge {% if (row.status or 'overdue')|lower == 'overdue' %}is-overdue{% else %}is-default{% endif %}">
-                <span class="admin-mobile-status-dot"></span>{{ task_status_text }}
-              </span>
             </div>
           </div>
           <div class="admin-mobile-card-action">
@@ -341,8 +344,7 @@
               <th>Timestamp</th>
               <th>Task</th>
               <th>User</th>
-              <th>Status</th>
-              <th class="num">Value</th>
+              <th class="num">Result</th>
               <th>Image</th>
             </tr>
           </thead>
@@ -355,16 +357,9 @@
               <td>{{ row.created_at }}</td>
               <td><b>{{ row.label or row.meter_type }}</b></td>
               <td>{{ row.username }}</td>
-              <td>
-                {% if row.status %}
-                <span class="pill {{ row.status_class }}">{{ row.status }}</span>
-                {% else %}
-                <span class="small-muted">-</span>
-                {% endif %}
-              </td>
               <td class="num">
                 {% if row.value %}
-                <b>{{ row.value }}</b>
+                <span class="submission-result{% if row._result_alert %} is-alert{% endif %}">{{ row.value }}</span>
                 {% else %}
                 <span class="small-muted">-</span>
                 {% endif %}
@@ -383,14 +378,9 @@
               <td>{{ row.submitted_at or row.deadline_at }}</td>
               <td><b>{{ row.title }}</b></td>
               <td>{{ row.assigned_username or row.assigned_user_id }}</td>
-              <td>
-                <span class="pill {% if row.status == 'overdue' %}high{% elif row.status in ['submitted','late','completed'] %}ok{% else %}low{% endif %}">
-                  {{ row.status }}
-                </span>
-              </td>
               <td class="num">
                 {% if row.response_value is not none and (row.response_value|string|lower) != 'overdue' %}
-                {{ row.response_value }}
+                <span class="submission-result{% if row._result_alert %} is-alert{% endif %}">{{ row.response_value }}</span>
                 {% if row.response_fuel_consumed is not none %}
                 <div class="small-muted">{{ row.response_fuel_consumed }} L</div>
                 {% endif %}
@@ -415,16 +405,9 @@
               <td>{{ row.created_at }}</td>
               <td><b>{{ row.label or row.meter_type }}</b></td>
               <td>{{ row.username }}</td>
-              <td>
-                {% if row.status %}
-                <span class="pill {{ row.status_class }}">{{ row.status }}</span>
-                {% else %}
-                <span class="small-muted">-</span>
-                {% endif %}
-              </td>
               <td class="num">
                 {% if row.value %}
-                <b>{{ row.value }}</b>
+                <span class="submission-result{% if row._result_alert %} is-alert{% endif %}">{{ row.value }}</span>
                 {% else %}
                 <span class="small-muted">-</span>
                 {% endif %}
@@ -444,14 +427,9 @@
               <td>{{ row.submitted_at or row.deadline_at }}</td>
               <td><b>{{ row.title }}</b></td>
               <td>{{ row.assigned_username or row.assigned_user_id }}</td>
-              <td>
-                <span class="pill {% if row.status == 'overdue' %}high{% elif row.status in ['submitted','late','completed'] %}ok{% else %}low{% endif %}">
-                  {{ row.status }}
-                </span>
-              </td>
               <td class="num">
                 {% if row.response_value is not none and (row.response_value|string|lower) != 'overdue' %}
-                {{ row.response_value }}
+                <span class="submission-result{% if row._result_alert %} is-alert{% endif %}">{{ row.response_value }}</span>
                 {% if row.response_fuel_consumed is not none %}
                 <div class="small-muted">{{ row.response_fuel_consumed }} L</div>
                 {% endif %}
@@ -696,8 +674,7 @@ document.addEventListener("click", (e) => {
     { label: "User", value: user },
     { label: "Team", value: team !== "-" ? `Team ${team}` : "-" },
     { label: "Task", value: label || "-" },
-    { label: "Status", value: status ? status.replace(/_/g, " ") : "-" },
-    { label: "Value", value },
+    { label: "Result", value },
     { label: "Time", value: created },
   ];
   if (imageTaken) detailRows.push({ label: src2 ? "Start Image Taken" : "Image Taken", value: imageTaken });

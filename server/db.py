@@ -1942,11 +1942,14 @@ def task_list_instances_for_scope(*, role: str, team: Optional[int]) -> List[Dic
             s.fuel_consumed AS response_fuel_consumed,
             s.ai_result_reference AS ai_result_reference,
             s.image_taken_at AS response_image_taken_at,
-            s.image_taken_at_2 AS response_image_taken_at_2
+            s.image_taken_at_2 AS response_image_taken_at_2,
+            ar.alert_triggered,
+            ar.alert_reason
         FROM task_instances i
         JOIN task_forms f ON f.id=i.form_id
         LEFT JOIN users u ON u.id=i.assigned_user_id
         LEFT JOIN task_submissions s ON s.task_instance_id=i.id
+        LEFT JOIN task_ai_results ar ON ar.task_instance_id=i.id
         WHERE 1=1
     """
     params: List[Any] = []
@@ -2256,17 +2259,51 @@ def task_log_activity(
         conn = _conn()
         cur = conn.cursor()
         cur.execute("PRAGMA table_info(task_activity_log)")
-        cols = {row[1] for row in cur.fetchall()}
+        table_info = cur.fetchall()
+        cols = {row[1] for row in table_info}
+        col_info = {row[1]: row for row in table_info}
         insert_cols: List[str] = ["action"]
         values: List[Any] = [action]
         if "task_instance_id" in cols:
             insert_cols.append("task_instance_id")
             values.append(task_instance_id)
         if "task_id" in cols:
-            insert_cols.append("task_id")
-            # Legacy databases may still require task_id as NOT NULL even for
-            # form-level events that do not target a concrete instance yet.
-            values.append(int(task_instance_id) if task_instance_id is not None else 0)
+            legacy_task_id: Optional[int] = None
+            try:
+                if task_instance_id is not None and int(task_instance_id) > 0:
+                    legacy_task_id = int(task_instance_id)
+                else:
+                    meta_obj = meta or {}
+                    form_id = meta_obj.get("form_id") if isinstance(meta_obj, dict) else None
+                    if form_id is not None:
+                        cur.execute(
+                            """
+                            SELECT id
+                            FROM task_instances
+                            WHERE form_id=?
+                            ORDER BY id DESC
+                            LIMIT 1
+                            """,
+                            (int(form_id),),
+                        )
+                        row = cur.fetchone()
+                        if row and row[0] is not None:
+                            legacy_task_id = int(row[0])
+            except Exception:
+                legacy_task_id = None
+            if legacy_task_id is not None:
+                insert_cols.append("task_id")
+                values.append(legacy_task_id)
+            elif int(col_info.get("task_id", [None, None, None, 0])[3] or 0) == 1:
+                log_event(
+                    _db_logger,
+                    "WARN",
+                    "TASK_ACTIVITY_LOG_SKIP",
+                    "Skipped task activity log because legacy task_id could not be resolved",
+                    action=action,
+                    task_instance_id=task_instance_id,
+                )
+                return
         if "actor_user_id" in cols:
             insert_cols.append("actor_user_id")
             values.append(actor_user_id)
